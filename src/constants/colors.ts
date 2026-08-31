@@ -1,0 +1,40 @@
+export const Colors = {
+  primary: '#1A56DB',
+  primaryDark: '#1239A0',
+  primaryLight: '#EBF1FE',
+  secondary: '#0E7490',
+  background: '#F9FAFB',
+  surface: '#FFFFFF',
+  border: '#E5E7EB',
+  borderLight: '#F3F4F6',
+
+  textPrimary: '#111827',
+  textSecondary: '#6B7280',
+  textMuted: '#9CA3AF',
+  textInverse: '#FFFFFF',
+
+  success: '#059669',
+  successLight: '#D1FAE5',
+  warning: '#D97706',
+  warningLight: '#FEF3C7',
+  error: '#DC2626',
+  errorLight: '#FEE2E2',
+  info: '#2563EB',
+  infoLight: '#DBEAFE',
+
+  statusDraft: '#6B7280',
+  statusDraftBg: '#F3F4F6',
+  statusInProgress: '#D97706',
+  statusInProgressBg: '#FEF3C7',
+  statusReady: '#2563EB',
+  statusReadyBg: '#DBEAFE',
+  statusCompleted: '#059669',
+  statusCompletedBg: '#D1FAE5',
+
+  tabBar: '#FFFFFF',
+  tabBarActive: '#1A56DB',
+  tabBarInactive: '#9CA3AF',
+
+  shadow: 'rgba(0,0,0,0.08)',
+  overlay: 'rgba(0,0,0,0.5)',
+};
