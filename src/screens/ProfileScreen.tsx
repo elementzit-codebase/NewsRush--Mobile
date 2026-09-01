@@ -6,36 +6,42 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
-import { updateProfile, uploadProfilePhoto } from '../api/users';
+import { changePassword, uploadProfilePicture, removeProfilePicture } from '../api/users';
 
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
-  const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const displayName = user?.first_name
+    ? `${user.first_name} ${user.last_name || ''}`.trim()
+    : (user?.name || user?.email || '');
   const [currentPwd, setCurrentPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [photoUri, setPhotoUri] = useState<string | null>(user?.profilePhoto || null);
+  const photoUri = user?.profile_pic || user?.profilePhoto || null;
 
-  const initials = user?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+  const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
 
-  const handleSaveProfile = async () => {
-    if (newPwd && newPwd !== confirmPwd) {
+  const handleChangePassword = async () => {
+    if (!currentPwd || !newPwd) {
+      Alert.alert('Error', 'Please enter your current and new password');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
       Alert.alert('Error', 'New passwords do not match');
+      return;
+    }
+    if (newPwd.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
     setSaving(true);
     try {
-      const payload: any = { name, email };
-      if (newPwd) { payload.currentPassword = currentPwd; payload.newPassword = newPwd; }
-      await updateProfile(payload);
-      await refreshUser();
+      await changePassword({ current_password: currentPwd, new_password: newPwd });
       setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
-      Alert.alert('Success', 'Profile updated successfully');
+      Alert.alert('Success', 'Password changed successfully');
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update profile');
+      Alert.alert('Error', e.message || 'Failed to update password');
     } finally {
       setSaving(false);
     }
@@ -50,16 +56,15 @@ export default function ProfileScreen() {
     });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    setPhotoUri(asset.uri);
     setUploadingPhoto(true);
     try {
       const formData = new FormData();
-      formData.append('photo', { uri: asset.uri, type: 'image/jpeg', name: 'profile.jpg' } as any);
-      await uploadProfilePhoto(formData);
+      formData.append('file', { uri: asset.uri, type: 'image/jpeg', name: 'profile.jpg' } as any);
+      await uploadProfilePicture(formData);
       await refreshUser();
       Alert.alert('Success', 'Profile photo updated');
     } catch (e: any) {
-      Alert.alert('Upload Error', e.message);
+      Alert.alert('Upload Error', e.message || 'Failed to upload photo');
     } finally {
       setUploadingPhoto(false);
     }
@@ -87,19 +92,11 @@ export default function ProfileScreen() {
             {uploadingPhoto ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.editBadgeText}>📷</Text>}
           </View>
         </TouchableOpacity>
-        <Text style={styles.headerName}>{user?.name}</Text>
+        <Text style={styles.headerName}>{displayName}</Text>
         <Text style={styles.headerEmail}>{user?.email}</Text>
         <View style={styles.roleBadge}>
-          <Text style={styles.roleText}>{user?.role?.toUpperCase()}</Text>
+          <Text style={styles.roleText}>{user?.is_system_user ? 'SYSTEM USER' : (user?.role || 'USER').toUpperCase()}</Text>
         </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Profile Details</Text>
-        <Text style={styles.label}>Full Name</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={Colors.textMuted} />
-        <Text style={styles.label}>Email</Text>
-        <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="your@email.com" placeholderTextColor={Colors.textMuted} keyboardType="email-address" autoCapitalize="none" />
       </View>
 
       <View style={styles.section}>
@@ -107,16 +104,15 @@ export default function ProfileScreen() {
         <Text style={styles.label}>Current Password</Text>
         <TextInput style={styles.input} value={currentPwd} onChangeText={setCurrentPwd} secureTextEntry placeholder="Current password" placeholderTextColor={Colors.textMuted} />
         <Text style={styles.label}>New Password</Text>
-        <TextInput style={styles.input} value={newPwd} onChangeText={setNewPwd} secureTextEntry placeholder="New password" placeholderTextColor={Colors.textMuted} />
+        <TextInput style={styles.input} value={newPwd} onChangeText={setNewPwd} secureTextEntry placeholder="New password (min 6 characters)" placeholderTextColor={Colors.textMuted} />
         <Text style={styles.label}>Confirm New Password</Text>
-        <TextInput style={styles.input} value={confirmPwd} onChangeText={setConfirmPwd} secureTextEntry placeholder="Confirm password" placeholderTextColor={Colors.textMuted} />
+        <TextInput style={styles.input} value={confirmPwd} onChangeText={setConfirmPwd} secureTextEntry placeholder="Confirm new password" placeholderTextColor={Colors.textMuted} />
+        <TouchableOpacity style={styles.saveBtn} onPress={handleChangePassword} disabled={saving}>
+          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Update Password</Text>}
+        </TouchableOpacity>
       </View>
 
       <View style={{ paddingHorizontal: 16 }}>
-        <TouchableOpacity style={styles.saveBtn} onPress={handleSaveProfile} disabled={saving}>
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
-        </TouchableOpacity>
-
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutBtnText}>Sign Out</Text>
         </TouchableOpacity>

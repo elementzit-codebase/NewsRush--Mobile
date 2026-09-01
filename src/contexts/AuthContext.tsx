@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
 import { login as apiLogin, logout as apiLogout, getMe } from '../api/auth';
-import { setToken, removeToken, getToken } from '../api/client';
+import { setTokens, removeToken, getToken } from '../api/client';
 
 interface AuthContextType {
   user: User | null;
@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, password: string) => {
     const response = await apiLogin({ email, password });
-    await setToken(response.token);
+    await setTokens(response);
     setUser(response.user);
   };
 

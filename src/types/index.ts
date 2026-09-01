@@ -1,51 +1,77 @@
 export interface User {
-  id: number;
-  name: string;
+  id: string | number;
+  first_name?: string;
+  last_name?: string;
+  name?: string;
   email: string;
-  role: 'admin' | 'editor' | 'viewer';
-  status: 'pending' | 'approved' | 'rejected';
+  phone_number?: string;
+  profile_pic?: string | null;
   profilePhoto?: string;
-  createdAt: string;
+  is_approved?: boolean;
+  is_system_user?: boolean;
+  role?: 'admin' | 'editor' | 'viewer' | string;
+  status?: 'pending' | 'approved' | 'rejected' | string;
+  created_at?: string;
+  createdAt?: string;
 }
 
 export interface Section {
-  id: number;
-  position: number;
-  headline: string;
-  body: string;
+  id?: string | number;
+  edition_id?: string;
+  page_number: number;
+  section_key: string;
+  section_name: string;
+  title?: string | null;
+  content?: string | null;
+  status?: 'draft' | 'completed' | string;
+  // UI aliases
+  headline?: string;
+  body?: string;
   imageUrl?: string;
   voiceNoteUrl?: string;
-  sectionType: 'text' | 'image' | 'mixed';
   isAiGenerated?: boolean;
 }
 
 export interface Page {
-  id: number;
+  id?: number | string;
   pageNumber: number;
   sections: Section[];
 }
 
+export type EditionStatus = 'draft' | 'in_progress' | 'ready' | 'completed';
+
 export interface Edition {
-  id: number;
-  title: string;
+  id: string | number;
+  newspaper_name: string;
   date: string;
-  status: 'draft' | 'in_progress' | 'ready' | 'completed';
-  pages: Page[];
-  createdBy: number;
-  createdAt: string;
-  updatedAt: string;
+  edition_label: string;
+  status: EditionStatus;
+  created_by_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  sections?: Section[];
+  // UI aliases
+  title?: string;
+  pages?: Page[];
+  createdBy?: number | string;
+  createdAt?: string;
+  updatedAt?: string;
   isReadinessChecked?: boolean;
 }
 
-export interface EditionSummary {
-  id: number;
-  title: string;
-  date: string;
-  status: 'draft' | 'in_progress' | 'ready' | 'completed';
-  createdAt: string;
-  updatedAt: string;
-  pageCount?: number;
-  sectionCount?: number;
+export type EditionSummary = Edition;
+
+export interface IncompleteSectionInfo {
+  page_number: number;
+  section_key: string;
+  section_name: string;
+}
+
+export interface ValidationResponse {
+  all_completed: boolean;
+  incomplete_sections: IncompleteSectionInfo[];
+  passed?: boolean;
+  issues?: string[];
 }
 
 export interface LoginRequest {
@@ -53,9 +79,70 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface LoginResponse {
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  phone_number: string;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
   token: string;
+  new_password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  refresh_token?: string;
+  token_type?: string;
+  token?: string;
   user: User;
+}
+
+export interface CreateEditionRequest {
+  newspaper_name: string;
+  date: string;
+  edition_label: string;
+  status?: EditionStatus;
+  title?: string;
+}
+
+export interface SaveSectionRequest {
+  page_number: number;
+  section_key: string;
+  section_name: string;
+  title?: string | null;
+  content?: string | null;
+  status?: string;
+}
+
+export interface AiHeadlineRequest {
+  content: string;
+}
+
+export interface AiHeadlineResponse {
+  headline: string;
+}
+
+export interface AiExpandRequest {
+  summary: string;
+  character_limit?: number;
+}
+
+export interface AiExpandResponse {
+  expanded_content: string;
+  generated_title?: string;
+  body?: string;
 }
 
 export interface ApiError {
@@ -64,36 +151,13 @@ export interface ApiError {
 }
 
 export interface PaginatedResponse<T> {
-  data: T[];
+  items: T[];
   total: number;
   page: number;
-  perPage: number;
-}
-
-export type EditionStatus = 'draft' | 'in_progress' | 'ready' | 'completed';
-
-export interface CreateEditionRequest {
-  title: string;
-  date: string;
-}
-
-export interface UpdateSectionRequest {
-  headline?: string;
-  body?: string;
-  imageUrl?: string;
-}
-
-export interface UserApprovalRequest {
-  userId: number;
-  action: 'approve' | 'reject';
-}
-
-export interface ProfileUpdateRequest {
-  name?: string;
-  email?: string;
-  currentPassword?: string;
-  newPassword?: string;
-  profilePhoto?: string;
+  page_size?: number;
+  total_pages?: number;
+  data?: T[];
+  perPage?: number;
 }
 
 export interface Notification {

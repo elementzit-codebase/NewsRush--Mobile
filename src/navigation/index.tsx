@@ -8,26 +8,36 @@ import { useAuth } from '../contexts/AuthContext';
 import { EditionStatus } from '../types';
 
 import LoginScreen from '../screens/LoginScreen';
+import RegisterScreen from '../screens/RegisterScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import WorkspaceScreen from '../screens/WorkspaceScreen';
 import EditorScreen from '../screens/EditorScreen';
 import SectionEditorScreen from '../screens/SectionEditorScreen';
+import PrintEditionScreen from '../screens/PrintEditionScreen';
 import UsersScreen from '../screens/UsersScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 
 export type RootStackParamList = {
   MainTabs: undefined;
-  Editor: { editionId: number };
+  Editor: { editionId: string | number };
   SectionEditor: {
-    editionId: number;
-    pageId: number;
-    sectionId: number;
-    sectionIndex: number;
+    editionId: string | number;
+    pageId?: number;
+    sectionId?: number | string;
+    sectionIndex?: number;
+    sectionKey?: string;
+    sectionName?: string;
+    initialTitle?: string;
+    initialContent?: string;
     editionStatus: EditionStatus;
   };
+  PrintEdition: { editionId: string | number };
 };
 
 export type AuthStackParamList = {
   Login: undefined;
+  Register: undefined;
+  ForgotPassword: undefined;
 };
 
 export type TabParamList = {
@@ -47,25 +57,29 @@ const TAB_ICONS: Record<string, string> = {
 };
 
 function MainTabs() {
+  const { user } = useAuth();
+  const isSystemUser = user?.is_system_user || user?.role === 'admin';
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: () => <Text style={{ fontSize: 22 }}>{TAB_ICONS[route.name] || '●'}</Text>,
-        tabBarActiveTintColor: Colors.tabBarActive,
-        tabBarInactiveTintColor: Colors.tabBarInactive,
+        tabBarIcon: () => <Text style={{ fontSize: 20 }}>{TAB_ICONS[route.name] || '●'}</Text>,
+        tabBarActiveTintColor: Colors.brand500,
+        tabBarInactiveTintColor: Colors.muted,
         tabBarStyle: {
-          backgroundColor: Colors.tabBar,
+          backgroundColor: '#ffffff',
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-          height: 60,
+          height: 62,
           paddingBottom: 8,
+          paddingTop: 6,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
         headerShown: false,
       })}
     >
       <Tab.Screen name="Workspace" component={WorkspaceScreen} />
-      <Tab.Screen name="Users" component={UsersScreen} />
+      {isSystemUser && <Tab.Screen name="Users" component={UsersScreen} />}
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -75,6 +89,8 @@ function AuthNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Login" component={LoginScreen} />
+      <AuthStack.Screen name="Register" component={RegisterScreen} />
+      <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </AuthStack.Navigator>
   );
 }
@@ -85,6 +101,7 @@ function AppStack() {
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="Editor" component={EditorScreen} />
       <Stack.Screen name="SectionEditor" component={SectionEditorScreen} />
+      <Stack.Screen name="PrintEdition" component={PrintEditionScreen} />
     </Stack.Navigator>
   );
 }
@@ -94,8 +111,8 @@ export default function AppNavigator() {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
+        <ActivityIndicator size="large" color={Colors.brand500} />
       </View>
     );
   }

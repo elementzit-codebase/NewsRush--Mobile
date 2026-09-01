@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../constants/colors';
 import { User } from '../types';
-import { getUsers, approveUser, rejectUser } from '../api/users';
+import { getUsers, approveUser } from '../api/users';
 import { useAuth } from '../contexts/AuthContext';
 
 const STATUS_COLORS: Record<string, { bg: string; color: string; label: string }> = {
@@ -24,78 +24,83 @@ export default function UsersScreen() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('all');
 
-  const fetch = async (quiet = false) => {
+  const fetch = async (quiet = false, status = filter) => {
     if (!quiet) setLoading(true);
     try {
-      const data = await getUsers();
-      setUsers(data);
+      const data = await getUsers(status);
+      setUsers(Array.isArray(data) ? data : ((data as any)?.items || []));
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      Alert.alert('Error', e.message || 'Failed to load users');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useFocusEffect(useCallback(() => { fetch(); }, []));
+  useFocusEffect(useCallback(() => { fetch(true, filter); }, [filter]));
 
-  const filtered = filter === 'all' ? users : users.filter(u => u.status === filter);
+  const handleFilterChange = (newFilter: 'all' | 'pending' | 'approved') => {
+    setFilter(newFilter);
+    fetch(false, newFilter);
+  };
 
   const handleApprove = (user: User) => {
-    Alert.alert('Approve User', `Approve ${user.name}?`, [
+    const name = user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : (user.name || user.email);
+    Alert.alert('Approve User', `Approve ${name}?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Approve', onPress: async () => {
-        try { await approveUser(user.id); fetch(true); }
-        catch (e: any) { Alert.alert('Error', e.message); }
+        try {
+          await approveUser(user.id);
+          fetch(true, filter);
+        } catch (e: any) {
+          Alert.alert('Error', e.message || 'Failed to approve user');
+        }
       }},
     ]);
   };
 
-  const handleReject = (user: User) => {
-    Alert.alert('Reject User', `Reject ${user.name}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Reject', style: 'destructive', onPress: async () => {
-        try { await rejectUser(user.id); fetch(true); }
-        catch (e: any) { Alert.alert('Error', e.message); }
-      }},
-    ]);
-  };
-
-  const isAdmin = currentUser?.role === 'admin';
+  const canManageUsers = currentUser?.is_system_user || currentUser?.role === 'admin';
 
   const renderUser = ({ item }: { item: User }) => {
-    const sc = STATUS_COLORS[item.status] || STATUS_COLORS.pending;
-    const initials = item.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+    const isPending = item.is_approved === false || item.status === 'pending';
+    const isApproved = item.is_approved === true || item.status === 'approved';
+    const sc = isApproved ? STATUS_COLORS.approved : STATUS_COLORS.pending;
+
+    const name = item.first_name
+      ? `${item.first_name} ${item.last_name || ''}`.trim()
+      : (item.name || item.email);
+    const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+
     return (
       <View style={styles.card}>
         <View style={styles.cardRow}>
-          <View style={[styles.avatar, { backgroundColor: ROLE_COLORS[item.role] || Colors.primary }]}>
+          <View style={[styles.avatar, { backgroundColor: Colors.primary }]}>
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{item.name}</Text>
+            <Text style={styles.userName}>{name}</Text>
             <Text style={styles.userEmail}>{item.email}</Text>
+            {item.phone_number ? (
+              <Text style={{ fontSize: 12, color: Colors.textMuted, marginBottom: 4 }}>📞 {item.phone_number}</Text>
+            ) : null}
             <View style={styles.tagRow}>
-              <View style={styles.roleTag}>
-                <Text style={[styles.roleText, { color: ROLE_COLORS[item.role] || Colors.primary }]}>
-                  {item.role?.toUpperCase()}
-                </Text>
-              </View>
+              {item.is_system_user && (
+                <View style={styles.roleTag}>
+                  <Text style={[styles.roleText, { color: Colors.primary }]}>SYSTEM USER</Text>
+                </View>
+              )}
               <View style={[styles.statusTag, { backgroundColor: sc.bg }]}>
-                <Text style={[styles.statusText, { color: sc.color }]}>{sc.label}</Text>
+                <Text style={[styles.statusText, { color: sc.color }]}>{isApproved ? 'Approved' : 'Pending'}</Text>
               </View>
             </View>
           </View>
         </View>
-        {isAdmin && item.status === 'pending' && (
+        {canManageUsers && isPending && (
           <View style={styles.actions}>
             <TouchableOpacity style={styles.approveBtn} onPress={() => handleApprove(item)}>
-              <Text style={styles.approveBtnText}>✓ Approve</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(item)}>
-              <Text style={styles.rejectBtnText}>✗ Reject</Text>
+              <Text style={styles.approveBtnText}>✓ Approve User</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -107,15 +112,15 @@ export default function UsersScreen() {
     <View style={styles.container}>
       <View style={styles.topBar}>
         <Text style={styles.heading}>Users</Text>
-        <Text style={styles.count}>{filtered.length} total</Text>
+        <Text style={styles.count}>{users.length} total</Text>
       </View>
 
       <View style={styles.filterRow}>
-        {(['all', 'pending', 'approved', 'rejected'] as const).map(f => (
+        {(['all', 'pending', 'approved'] as const).map(f => (
           <TouchableOpacity
             key={f}
             style={[styles.chip, filter === f && styles.chipActive]}
-            onPress={() => setFilter(f)}
+            onPress={() => handleFilterChange(f)}
           >
             <Text style={[styles.chipText, filter === f && styles.chipTextActive]}>
               {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -128,10 +133,10 @@ export default function UsersScreen() {
         <ActivityIndicator style={{ marginTop: 40 }} color={Colors.primary} size="large" />
       ) : (
         <FlatList
-          data={filtered}
+          data={users}
           keyExtractor={item => String(item.id)}
           renderItem={renderUser}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetch(true); }} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetch(true, filter); }} />}
           contentContainerStyle={{ padding: 16, gap: 10 }}
           ListEmptyComponent={
             <View style={styles.empty}>

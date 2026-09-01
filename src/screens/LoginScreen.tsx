@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Image,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
+import { AuthStackParamList } from '../navigation';
+
+type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
 export default function LoginScreen() {
+  const navigation = useNavigation<Nav>();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,14 +21,14 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please enter email and password');
+      Alert.alert('Error', 'Please enter email address and password');
       return;
     }
     setLoading(true);
     try {
       await login(email.trim(), password);
     } catch (err: any) {
-      Alert.alert('Login Failed', err.message || 'Invalid credentials');
+      Alert.alert('Sign In Failed', err.message || 'Invalid email or password');
     } finally {
       setLoading(false);
     }
@@ -30,19 +36,29 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.inner}>
-        <View style={styles.logoContainer}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>DAILY NEWS</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        {/* Brand Header */}
+        <View style={styles.brandRow}>
+          <View style={styles.logoBadge}>
+            <Text style={styles.logoIcon}>📰</Text>
           </View>
-          <Text style={styles.appName}>NewsRush</Text>
-          <Text style={styles.tagline}>Your newsroom, mobilized.</Text>
+          <View>
+            <Text style={styles.brandTitle}>NewsRush</Text>
+            <Text style={styles.brandSubtitle}>AI-Powered News Creation</Text>
+          </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.title}>Sign In</Text>
+        {/* Hero title */}
+        <View style={styles.heroSection}>
+          <Text style={styles.heroTitle}>Create Smarter News with AI</Text>
+          <Text style={styles.heroBody}>
+            Transform ideas into engaging news content with the power of AI.
+          </Text>
+        </View>
 
-          <Text style={styles.label}>Email</Text>
+        {/* Form Card */}
+        <View style={styles.formCard}>
+          <Text style={styles.label}>Email Address</Text>
           <TextInput
             style={styles.input}
             placeholder="Enter your email"
@@ -54,10 +70,16 @@ export default function LoginScreen() {
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordRow}>
+          <View style={styles.passwordHeader}>
+            <Text style={styles.label}>Password</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.passwordWrapper}>
             <TextInput
-              style={[styles.input, { flex: 1 }]}
+              style={[styles.input, { flex: 1, marginBottom: 0 }]}
               placeholder="Enter your password"
               placeholderTextColor={Colors.textMuted}
               value={password}
@@ -65,51 +87,167 @@ export default function LoginScreen() {
               secureTextEntry={!showPassword}
               autoCapitalize="none"
             />
-            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
-              <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁'}</Text>
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword(v => !v)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} disabled={loading}>
-            {loading
-              ? <ActivityIndicator color={Colors.textInverse} />
-              : <Text style={styles.loginBtnText}>Sign In</Text>}
+          <TouchableOpacity style={styles.submitBtn} onPress={handleLogin} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.submitBtnText}>Sign In</Text>
+            )}
           </TouchableOpacity>
         </View>
-      </View>
+
+        {/* Register Link */}
+        <View style={styles.footerRow}>
+          <Text style={styles.footerText}>Don't have an account? </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+            <Text style={styles.registerLink}>Register</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.primary },
-  inner: { flex: 1, justifyContent: 'center', padding: 24 },
-  logoContainer: { alignItems: 'center', marginBottom: 32 },
-  logoBox: {
-    backgroundColor: Colors.textInverse, borderRadius: 12,
-    paddingHorizontal: 20, paddingVertical: 10, marginBottom: 12,
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
   },
-  logoText: { fontSize: 22, fontWeight: '900', color: Colors.primary, letterSpacing: 2 },
-  appName: { fontSize: 28, fontWeight: '700', color: Colors.textInverse, marginBottom: 4 },
-  tagline: { fontSize: 14, color: 'rgba(255,255,255,0.75)' },
-  card: {
-    backgroundColor: Colors.surface, borderRadius: 20,
-    padding: 24, shadowColor: '#000', shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 8,
+  scrollContent: {
+    padding: 24,
+    paddingTop: 60,
+    paddingBottom: 40,
+    justifyContent: 'center',
   },
-  title: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary, marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, marginBottom: 6 },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 28,
+  },
+  logoBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.brand50,
+    borderWidth: 1,
+    borderColor: Colors.brand100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoIcon: {
+    fontSize: 22,
+  },
+  brandTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.navy900,
+  },
+  brandSubtitle: {
+    fontSize: 12,
+    color: Colors.muted,
+    marginTop: 2,
+  },
+  heroSection: {
+    marginBottom: 28,
+  },
+  heroTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: Colors.navy900,
+    lineHeight: 34,
+    marginBottom: 8,
+  },
+  heroBody: {
+    fontSize: 15,
+    color: Colors.muted,
+    lineHeight: 22,
+  },
+  formCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.shadow,
+    shadowOpacity: 1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3,
+    marginBottom: 24,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.ink,
+    marginBottom: 8,
+  },
   input: {
-    borderWidth: 1.5, borderColor: Colors.border, borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 12, fontSize: 15,
-    color: Colors.textPrimary, backgroundColor: Colors.background, marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: Colors.ink,
+    backgroundColor: '#ffffff',
+    marginBottom: 16,
   },
-  passwordRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  eyeBtn: { position: 'absolute', right: 12, padding: 8 },
-  eyeText: { fontSize: 18 },
-  loginBtn: {
-    backgroundColor: Colors.primary, borderRadius: 10,
-    paddingVertical: 14, alignItems: 'center', marginTop: 4,
+  passwordHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  loginBtnText: { color: Colors.textInverse, fontSize: 16, fontWeight: '700' },
+  forgotText: {
+    fontSize: 13,
+    color: Colors.brand500,
+    fontWeight: '600',
+  },
+  passwordWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: 12,
+    padding: 4,
+  },
+  eyeIcon: {
+    fontSize: 18,
+  },
+  submitBtn: {
+    backgroundColor: Colors.navy900,
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  submitBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
+    color: Colors.muted,
+  },
+  registerLink: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.brand500,
+  },
 });

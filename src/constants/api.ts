@@ -1,44 +1,36 @@
-export const API_BASE_URL = 'https://newsrush.elementzit.com/api';
+export const API_BASE_URL = 'https://www.newsrush.elementzit.com/api';
 
 export const ENDPOINTS = {
   auth: {
+    register: '/auth/register',
     login: '/auth/login',
+    refresh: '/auth/refresh',
     logout: '/auth/logout',
-    me: '/auth/me',
+    forgotPassword: '/auth/forgot-password',
+    resetPassword: '/auth/reset-password',
+  },
+  users: {
+    me: '/users/me',
+    list: '/users',
+    approve: (id: string | number) => `/users/${id}/approve`,
+    changePassword: '/users/me/password',
+    profilePic: '/users/me/profile-pic',
   },
   editions: {
     list: '/editions',
     create: '/editions',
-    get: (id: number) => `/editions/${id}`,
-    update: (id: number) => `/editions/${id}`,
-    delete: (id: number) => `/editions/${id}`,
-    updateStatus: (id: number) => `/editions/${id}/status`,
-    checkReadiness: (id: number) => `/editions/${id}/readiness`,
-    export: (id: number) => `/editions/${id}/export`,
+    get: (id: string | number) => `/editions/${id}`,
+    update: (id: string | number) => `/editions/${id}`,
+    delete: (id: string | number) => `/editions/${id}`,
+    validate: (id: string | number) => `/editions/${id}/validate`,
   },
   sections: {
-    update: (editionId: number, pageId: number, sectionId: number) =>
-      `/editions/${editionId}/pages/${pageId}/sections/${sectionId}`,
-    aiHeadline: (editionId: number, pageId: number, sectionId: number) =>
-      `/editions/${editionId}/pages/${pageId}/sections/${sectionId}/ai-headline`,
-    aiExpand: (editionId: number, pageId: number, sectionId: number) =>
-      `/editions/${editionId}/pages/${pageId}/sections/${sectionId}/ai-expand`,
-    uploadImage: (editionId: number, pageId: number, sectionId: number) =>
-      `/editions/${editionId}/pages/${pageId}/sections/${sectionId}/image`,
-    uploadVoice: (editionId: number, pageId: number, sectionId: number) =>
-      `/editions/${editionId}/pages/${pageId}/sections/${sectionId}/voice`,
+    list: (editionId: string | number) => `/editions/${editionId}/sections`,
+    save: (editionId: string | number, sectionKey: string) =>
+      `/editions/${editionId}/sections/${sectionKey}`,
   },
-  users: {
-    list: '/users',
-    get: (id: number) => `/users/${id}`,
-    approve: (id: number) => `/users/${id}/approve`,
-    reject: (id: number) => `/users/${id}/reject`,
-    updateProfile: '/users/profile',
-    uploadPhoto: '/users/profile/photo',
-  },
-  notifications: {
-    list: '/notifications',
-    markRead: (id: number) => `/notifications/${id}/read`,
-    markAllRead: '/notifications/read-all',
+  ai: {
+    headline: '/ai/headline',
+    expand: '/ai/expand',
   },
 };
