@@ -126,8 +126,11 @@ export interface SaveSectionRequest {
   status?: string;
 }
 
+export type AiLanguage = 'english' | 'malayalam';
+
 export interface AiHeadlineRequest {
   content: string;
+  language?: AiLanguage;
 }
 
 export interface AiHeadlineResponse {
@@ -137,12 +140,24 @@ export interface AiHeadlineResponse {
 export interface AiExpandRequest {
   summary: string;
   character_limit?: number;
+  language?: AiLanguage;
 }
 
 export interface AiExpandResponse {
   expanded_content: string;
   generated_title?: string;
   body?: string;
+}
+
+export interface AiTranscribeRequest {
+  audio_b64?: string;
+  audio_uri?: string;
+  mime_type?: string;
+  language?: AiLanguage;
+}
+
+export interface AiTranscribeResponse {
+  transcript: string;
 }
 
 export interface ApiError {

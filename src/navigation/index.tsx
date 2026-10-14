@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, ActivityIndicator, Text } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { View, ActivityIndicator, BackHandler } from 'react-native';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Newspaper, Users, User } from 'lucide-react-native';
 import { Colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
 import { EditionStatus } from '../types';
@@ -10,12 +11,14 @@ import { EditionStatus } from '../types';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import WorkspaceScreen from '../screens/WorkspaceScreen';
 import EditorScreen from '../screens/EditorScreen';
 import SectionEditorScreen from '../screens/SectionEditorScreen';
 import PrintEditionScreen from '../screens/PrintEditionScreen';
 import UsersScreen from '../screens/UsersScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type RootStackParamList = {
   MainTabs: undefined;
@@ -27,8 +30,11 @@ export type RootStackParamList = {
     sectionIndex?: number;
     sectionKey?: string;
     sectionName?: string;
+    canonicalName?: string;
+    charLimit?: number;
     initialTitle?: string;
     initialContent?: string;
+    initialStatus?: string;
     editionStatus: EditionStatus;
   };
   PrintEdition: { editionId: string | number };
@@ -38,6 +44,7 @@ export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
+  ResetPassword: { token?: string } | undefined;
 };
 
 export type TabParamList = {
@@ -50,31 +57,39 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
-const TAB_ICONS: Record<string, string> = {
-  Workspace: '📰',
-  Users: '👥',
-  Profile: '👤',
-};
-
 function MainTabs() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const isSystemUser = user?.is_system_user || user?.role === 'admin';
+  const bottomInset = insets.bottom > 0 ? insets.bottom : 8;
+  const tabHeight = 52 + bottomInset;
 
   return (
     <Tab.Navigator
+      backBehavior="history"
       screenOptions={({ route }) => ({
-        tabBarIcon: () => <Text style={{ fontSize: 20 }}>{TAB_ICONS[route.name] || '●'}</Text>,
+        tabBarIcon: ({ color, size }) => {
+          const iconSize = size ? Math.min(size, 20) : 20;
+          if (route.name === 'Workspace') {
+            return <Newspaper size={iconSize} color={color} strokeWidth={2} />;
+          }
+          if (route.name === 'Users') {
+            return <Users size={iconSize} color={color} strokeWidth={2} />;
+          }
+          return <User size={iconSize} color={color} strokeWidth={2} />;
+        },
         tabBarActiveTintColor: Colors.brand500,
         tabBarInactiveTintColor: Colors.muted,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: '#ffffff',
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-          height: 62,
-          paddingBottom: 8,
-          paddingTop: 6,
+          height: tabHeight,
+          paddingBottom: bottomInset,
+          paddingTop: 5,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         headerShown: false,
       })}
     >
@@ -91,6 +106,7 @@ function AuthNavigator() {
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </AuthStack.Navigator>
   );
 }
@@ -108,6 +124,20 @@ function AppStack() {
 
 export default function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
+  const navigationRef = useNavigationContainerRef();
+
+  useEffect(() => {
+    const onBackPress = () => {
+      if (navigationRef.isReady() && navigationRef.canGoBack()) {
+        navigationRef.goBack();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [navigationRef]);
 
   if (isLoading) {
     return (
@@ -118,7 +148,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       {isAuthenticated ? <AppStack /> : <AuthNavigator />}
     </NavigationContainer>
   );

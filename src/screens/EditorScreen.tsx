@@ -1,14 +1,32 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import {
+  ChevronLeft,
+  Printer,
+  Check,
+  ArrowRight,
+  Sparkles,
+  LayoutTemplate,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  X,
+} from 'lucide-react-native';
 import { Colors } from '../constants/colors';
-import { Edition, Section } from '../types';
-import { getEdition, updateEditionStatus, validateEdition } from '../api/editions';
+import { Edition, Section, ValidationResponse, AiLanguage } from '../types';
+import { getEdition, updateEditionStatus, validateEdition, saveSection } from '../api/editions';
+import { expandContent } from '../api/ai';
 import StatusBadge from '../components/StatusBadge';
 import TemplateThumb from '../components/TemplateThumb';
 import { buildPage, templatesForPage, DEFAULT_TEMPLATE } from '../data/templates';
@@ -19,32 +37,33 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Editor'>;
 
 const PAGE_NAMES = [
-  'Page 1 · Front Page',
-  'Page 2 · Kerala & District',
-  'Page 3 · Sports & Business',
-  'Page 4 · Features & Evening',
+  'Front Page',
+  'Kerala & District',
+  'Sports & Business',
+  'Features & Evening',
 ];
 
-const STATUS_FLOW: Record<string, string> = {
-  draft: 'in_progress',
-  in_progress: 'ready',
-  ready: 'completed',
-};
-
-const STATUS_BTN: Record<string, string> = {
-  draft: 'Start Working',
-  in_progress: 'Validate / Ready',
-  ready: 'Mark Complete',
-};
+const UNDERFILL_RATIO = 0.6;
 
 export default function EditorScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { editionId } = route.params;
+
   const [edition, setEdition] = useState<Edition | null>(null);
   const [loading, setLoading] = useState(true);
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [advancing, setAdvancing] = useState(false);
+  const [checkingReadiness, setCheckingReadiness] = useState(false);
+  const [validation, setValidation] = useState<ValidationResponse | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [fillLang, setFillLang] = useState<AiLanguage>('english');
+  const [fillState, setFillState] = useState<{ running: boolean; done: number; total: number }>({
+    running: false,
+    done: 0,
+    total: 0,
+  });
+  const cancelFillRef = useRef(false);
+
   const [templateSelection, setTemplateSelection] = useState<Record<number, string>>(() =>
     readTemplates(editionId)
   );
@@ -63,7 +82,11 @@ export default function EditorScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { load(true); }, [editionId]));
+  useFocusEffect(
+    useCallback(() => {
+      load(true);
+    }, [editionId])
+  );
 
   const pageNumber = activePageIndex + 1;
   const currentTemplateKey = templateSelection[pageNumber] || DEFAULT_TEMPLATE;
@@ -73,46 +96,102 @@ export default function EditorScreen() {
   );
   const availableTemplates = useMemo(() => templatesForPage(pageNumber), [pageNumber]);
 
+  const allBuiltPages = useMemo(
+    () =>
+      [1, 2, 3, 4].map(pNum => buildPage(pNum, templateSelection[pNum] || DEFAULT_TEMPLATE)),
+    [templateSelection]
+  );
+
+  const savedSectionsMap = useMemo(() => {
+    const map = new Map<string, Section>();
+    (edition?.sections || []).forEach(s => {
+      if (s.section_key) {
+        map.set(s.section_key, s);
+      }
+    });
+    return map;
+  }, [edition]);
+
+  const completedKeySet = useMemo(() => {
+    const set = new Set<string>();
+    (edition?.sections || []).forEach(s => {
+      if (s.section_key && s.status === 'completed' && s.title && s.content) {
+        set.add(s.section_key);
+      }
+    });
+    return set;
+  }, [edition]);
+
+  const underFilledBlocks = useMemo(() => {
+    return allBuiltPages
+      .flatMap(p => p.blocks)
+      .filter(b => {
+        const saved = savedSectionsMap.get(b.section_key);
+        const text = saved?.content?.trim() || '';
+        if (!text) return false;
+        return text.length < b.charLimit * UNDERFILL_RATIO;
+      });
+  }, [allBuiltPages, savedSectionsMap]);
+
   const handleSelectTemplate = (tplKey: string) => {
     const updated = writeTemplate(editionId, pageNumber, tplKey);
     setTemplateSelection({ ...updated });
   };
 
-  const handleAdvanceStatus = async () => {
-    if (!edition) return;
-    const next = STATUS_FLOW[edition.status];
-    if (!next) return;
+  const handleCheckReadiness = async () => {
+    setCheckingReadiness(true);
+    try {
+      const res = await validateEdition(editionId);
+      setValidation(res);
+      const fresh = await getEdition(editionId);
+      setEdition(fresh);
+    } catch (e: any) {
+      Alert.alert('Readiness Check Error', e.message || 'Could not validate edition');
+    } finally {
+      setCheckingReadiness(false);
+    }
+  };
 
-    if (edition.status === 'in_progress') {
-      setAdvancing(true);
+  const handleFillThinSections = async () => {
+    if (fillState.running) {
+      cancelFillRef.current = true;
+      return;
+    }
+    if (underFilledBlocks.length === 0) return;
+
+    cancelFillRef.current = false;
+    setFillState({ running: true, done: 0, total: underFilledBlocks.length });
+
+    for (let i = 0; i < underFilledBlocks.length; i++) {
+      if (cancelFillRef.current) break;
+      const candidate = underFilledBlocks[i];
+      const saved = savedSectionsMap.get(candidate.section_key);
+      if (!saved?.content?.trim()) continue;
+
       try {
-        const res = await validateEdition(editionId);
-        if (!res.all_completed) {
-          Alert.alert(
-            'Incomplete Sections',
-            `To mark this edition ready, complete all 19 sections:\n\n${(res.issues || []).join('\n')}`
-          );
-          setAdvancing(false);
-          return;
-        }
+        const res = await expandContent({
+          summary: saved.content,
+          character_limit: candidate.charLimit,
+          language: fillLang,
+        });
+        await saveSection(editionId, {
+          page_number: candidate.page_number || 1,
+          section_key: candidate.section_key,
+          section_name: saved.section_name || candidate.section_name,
+          title: saved.title || res.generated_title || null,
+          content: res.expanded_content,
+          status: saved.status || 'completed',
+        });
       } catch {}
-      setAdvancing(false);
+
+      setFillState({ running: true, done: i + 1, total: underFilledBlocks.length });
+      if (i < underFilledBlocks.length - 1) {
+        await new Promise(r => setTimeout(r, 700));
+      }
     }
 
-    Alert.alert('Update Status', `Move edition status to "${next.replace('_', ' ')}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Confirm',
-        onPress: async () => {
-          try {
-            const updated = await updateEditionStatus(editionId, next as any);
-            setEdition(updated);
-          } catch (e: any) {
-            Alert.alert('Error', e.message || 'Could not update status');
-          }
-        },
-      },
-    ]);
+    setFillState({ running: false, done: 0, total: 0 });
+    await load(true);
   };
 
   if (loading) {
@@ -123,26 +202,19 @@ export default function EditorScreen() {
     );
   }
 
-  const savedSectionsMap = new Map<string, Section>();
-  const completedKeySet = new Set<string>();
-
-  (edition?.sections || []).forEach(s => {
-    if (s.section_key) {
-      savedSectionsMap.set(s.section_key, s);
-      if (s.status === 'completed' && s.title && s.content) {
-        completedKeySet.add(s.section_key);
-      }
-    }
-  });
-
   const totalDone = completedKeySet.size;
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Top Header */}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Compact Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Workspace</Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <ChevronLeft size={18} color="#ffffff" strokeWidth={2.2} />
+          <Text style={styles.backText}>Workspace</Text>
         </TouchableOpacity>
 
         <View style={styles.headerCenter}>
@@ -154,41 +226,156 @@ export default function EditorScreen() {
           </Text>
         </View>
 
-        <View style={styles.headerActions}>
+        <TouchableOpacity
+          style={styles.printHeaderBtn}
+          onPress={() =>
+            navigation.navigate('PrintEdition', { editionId: (edition?.id || editionId) as any })
+          }
+          activeOpacity={0.8}
+        >
+          <Printer size={14} color="#ffffff" strokeWidth={2} />
+          <Text style={styles.printHeaderText}>Print</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Compact Toolbar: Status + Bulk Fill + Check Readiness */}
+      <View style={styles.statusBar}>
+        <StatusBadge status={edition?.status || 'draft'} />
+
+        <View style={styles.toolbarActions}>
+          {(underFilledBlocks.length > 0 || fillState.running) && (
+            <TouchableOpacity
+              style={styles.fillBtn}
+              onPress={handleFillThinSections}
+              activeOpacity={0.8}
+            >
+              <Sparkles size={13} color={Colors.brand600} strokeWidth={2} />
+              <Text style={styles.fillBtnText}>
+                {fillState.running
+                  ? `Filling ${fillState.done}/${fillState.total}`
+                  : `Fill ${underFilledBlocks.length} thin`}
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
-            style={styles.printHeaderBtn}
-            onPress={() => navigation.navigate('PrintEdition', { editionId: (edition?.id || editionId) as any })}
+            style={styles.readinessBtn}
+            onPress={handleCheckReadiness}
+            disabled={checkingReadiness}
+            activeOpacity={0.85}
           >
-            <Text style={styles.printHeaderText}>🖨 Print</Text>
+            {checkingReadiness ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <>
+                <Text style={styles.readinessBtnText}>Check readiness</Text>
+                <ArrowRight size={13} color="#ffffff" strokeWidth={2.2} />
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Status Bar */}
-      <View style={styles.statusBar}>
-        <StatusBadge status={edition?.status || 'draft'} />
-        {edition && STATUS_FLOW[edition.status] && (
-          <TouchableOpacity
-            style={styles.advanceBtn}
-            onPress={handleAdvanceStatus}
-            disabled={advancing}
-          >
-            {advancing ? (
-              <ActivityIndicator color="#ffffff" size="small" />
-            ) : (
-              <Text style={styles.advanceBtnText}>{STATUS_BTN[edition.status]}</Text>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* Readiness Check Floating Banner (like NewsRush-FE) */}
+      {validation && (
+        <View
+          style={[
+            styles.validationCard,
+            validation.all_completed ? styles.validationSuccess : styles.validationWarning,
+          ]}
+        >
+          <View style={styles.validationTop}>
+            <View style={styles.validationTitleRow}>
+              <View
+                style={[
+                  styles.validationBadgeIcon,
+                  { backgroundColor: validation.all_completed ? Colors.success : Colors.warning },
+                ]}
+              >
+                {validation.all_completed ? (
+                  <Check size={12} color="#ffffff" strokeWidth={2.5} />
+                ) : (
+                  <Info size={12} color="#ffffff" strokeWidth={2.5} />
+                )}
+              </View>
+              <Text style={styles.validationTitle}>
+                {validation.all_completed
+                  ? 'Readiness Check Passed — All 19 sections complete'
+                  : `${validation.incomplete_sections?.length || 0} sections still incomplete (tap to jump):`}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setValidation(null)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <X size={15} color={Colors.muted} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+
+          {validation.all_completed ? (
+            <TouchableOpacity
+              style={styles.validationPrintBtn}
+              onPress={() => {
+                setValidation(null);
+                navigation.navigate('PrintEdition', {
+                  editionId: (edition?.id || editionId) as any,
+                });
+              }}
+            >
+              <Printer size={13} color="#ffffff" strokeWidth={2} />
+              <Text style={styles.validationPrintText}>Open Print Preview</Text>
+            </TouchableOpacity>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.jumpChipsRow}
+            >
+              {(validation.incomplete_sections || []).map(sec => {
+                const pIdx = Math.max(0, (sec.page_number || 1) - 1);
+                const pageDef = allBuiltPages[pIdx];
+                const blk = pageDef?.blocks.find(b => b.section_key === sec.section_key);
+                const saved = savedSectionsMap.get(sec.section_key);
+                return (
+                  <TouchableOpacity
+                    key={sec.section_key}
+                    style={styles.jumpChip}
+                    onPress={() => {
+                      setActivePageIndex(pIdx);
+                      setValidation(null);
+                      navigation.navigate('SectionEditor', {
+                        editionId,
+                        pageId: sec.page_number,
+                        sectionKey: sec.section_key,
+                        sectionName: saved?.section_name || blk?.section_name || sec.section_name,
+                        canonicalName: blk?.section_name || sec.section_name,
+                        charLimit: blk?.charLimit || 2000,
+                        initialTitle: saved?.title || '',
+                        initialContent: saved?.content || '',
+                        initialStatus: saved?.status || 'draft',
+                        editionStatus: (edition?.status || 'draft') as any,
+                      });
+                    }}
+                  >
+                    <Text style={styles.jumpChipPage}>P{sec.page_number}</Text>
+                    <Text style={styles.jumpChipName}>{sec.section_name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      )}
 
       {/* 4 Page Tab Navigation */}
       <View style={styles.pageTabs}>
         {[1, 2, 3, 4].map((pNum, idx) => {
           const isSelected = activePageIndex === idx;
-          const tplKey = templateSelection[pNum] || DEFAULT_TEMPLATE;
-          const pageDef = buildPage(pNum, tplKey);
-          const pageDoneCount = pageDef.blocks.filter(b => completedKeySet.has(b.section_key)).length;
+          const pageDef = allBuiltPages[idx];
+          const pageDoneCount = pageDef.blocks.filter(b =>
+            completedKeySet.has(b.section_key)
+          ).length;
+          const allPageDone = pageDoneCount === pageDef.blocks.length;
 
           return (
             <TouchableOpacity
@@ -196,50 +383,101 @@ export default function EditorScreen() {
               style={[styles.pageTab, isSelected && styles.pageTabActive]}
               onPress={() => setActivePageIndex(idx)}
             >
-              <Text style={[styles.pageTabNum, isSelected && styles.pageTabNumActive]}>
-                P{pNum}
-              </Text>
-              <Text style={[styles.pageTabLabel, isSelected && styles.pageTabLabelActive]} numberOfLines={1}>
-                {PAGE_NAMES[idx].split('·')[1]?.trim() || `Page ${pNum}`} ({pageDoneCount}/{pageDef.blocks.length})
+              <View style={styles.pageTabTopRow}>
+                <Text style={[styles.pageTabNum, isSelected && styles.pageTabNumActive]}>
+                  Page {pNum}
+                </Text>
+                <Text
+                  style={[
+                    styles.pageTabCount,
+                    allPageDone
+                      ? { color: Colors.success }
+                      : isSelected
+                      ? { color: Colors.brand600 }
+                      : { color: Colors.muted },
+                  ]}
+                >
+                  {pageDoneCount}/{pageDef.blocks.length}
+                </Text>
+              </View>
+              <Text
+                style={[styles.pageTabLabel, isSelected && styles.pageTabLabelActive]}
+                numberOfLines={1}
+              >
+                {PAGE_NAMES[idx]}
               </Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* Page Content & Templates */}
+      {/* Main Scroll Content */}
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Template Selector Box */}
+        {/* Collapsible Template Bar */}
         <View style={styles.templateSection}>
-          <Text style={styles.templateHeaderTitle}>CHANGE TEMPLATE</Text>
-          <Text style={styles.templateHeaderDesc}>{builtPage.description}</Text>
-          <View style={styles.templateCardsRow}>
-            {availableTemplates.map(tpl => {
-              const isCurrent = tpl.key === currentTemplateKey;
-              const previewPage = buildPage(pageNumber, tpl.key);
-              return (
-                <TouchableOpacity
-                  key={tpl.key}
-                  style={[styles.templateCard, isCurrent && styles.templateCardActive]}
-                  onPress={() => handleSelectTemplate(tpl.key)}
-                >
-                  <TemplateThumb blocks={previewPage.blocks} completedKeys={completedKeySet} />
-                  <Text style={[styles.templateCardName, isCurrent && styles.templateCardNameActive]}>
-                    {tpl.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <TouchableOpacity
+            style={styles.templateHeaderRow}
+            onPress={() => setShowTemplates(v => !v)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.templateHeaderLeft}>
+              <LayoutTemplate size={15} color={Colors.brand500} strokeWidth={2} />
+              <Text style={styles.templateHeaderTitle}>
+                Layout: <Text style={{ color: Colors.navy900 }}>{builtPage.templateName}</Text>
+              </Text>
+              <Text style={styles.templateHeaderDesc} numberOfLines={1}>
+                · {builtPage.description}
+              </Text>
+            </View>
+            <View style={styles.templateToggleBtn}>
+              <Text style={styles.templateToggleText}>{showTemplates ? 'Hide' : 'Change'}</Text>
+              {showTemplates ? (
+                <ChevronUp size={14} color={Colors.brand600} strokeWidth={2} />
+              ) : (
+                <ChevronDown size={14} color={Colors.brand600} strokeWidth={2} />
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {showTemplates && (
+            <View style={styles.templateCardsRow}>
+              {availableTemplates.map(tpl => {
+                const isCurrent = tpl.key === currentTemplateKey;
+                const previewPage = buildPage(pageNumber, tpl.key);
+                return (
+                  <TouchableOpacity
+                    key={tpl.key}
+                    style={[styles.templateCard, isCurrent && styles.templateCardActive]}
+                    onPress={() => handleSelectTemplate(tpl.key)}
+                  >
+                    <TemplateThumb
+                      blocks={previewPage.blocks}
+                      completedKeys={completedKeySet}
+                    />
+                    <Text
+                      style={[
+                        styles.templateCardName,
+                        isCurrent && styles.templateCardNameActive,
+                      ]}
+                    >
+                      {tpl.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
-        {/* Section Cards */}
+        {/* Compact Section Cards */}
         {builtPage.blocks.map((block, idx) => {
           const saved = savedSectionsMap.get(block.section_key);
+          const customLabel = saved?.section_name?.trim() || block.section_name;
           const headline = saved?.title || '';
           const body = saved?.content || '';
           const isDone = completedKeySet.has(block.section_key);
           const currentChars = body.length;
+          const fillPercent = Math.min(100, Math.round((currentChars / block.charLimit) * 100));
 
           return (
             <TouchableOpacity
@@ -250,9 +488,12 @@ export default function EditorScreen() {
                   editionId,
                   pageId: pageNumber,
                   sectionKey: block.section_key,
-                  sectionName: block.section_name,
+                  sectionName: customLabel,
+                  canonicalName: block.section_name,
+                  charLimit: block.charLimit,
                   initialTitle: headline,
                   initialContent: body,
+                  initialStatus: saved?.status || 'draft',
                   sectionIndex: idx,
                   editionStatus: (edition?.status || 'draft') as any,
                 })
@@ -261,28 +502,55 @@ export default function EditorScreen() {
             >
               <View style={styles.cardHeader}>
                 <View style={styles.blockInfo}>
-                  <Text style={styles.blockName}>{block.section_name}</Text>
+                  <Text style={styles.blockName} numberOfLines={1}>
+                    {customLabel}
+                  </Text>
                   <Text style={styles.capacityText}>
-                    {currentChars} / {block.charLimit} chars · {block.size.toUpperCase()}
+                    {currentChars}/{block.charLimit} chars ({fillPercent}%) · {block.size.toUpperCase()}
                   </Text>
                 </View>
+
                 <View style={[styles.statusTag, isDone ? styles.doneTag : styles.draftTag]}>
-                  <Text style={[styles.statusTagText, isDone ? styles.doneTagText : styles.draftTagText]}>
-                    {isDone ? '✓ Completed' : 'Draft'}
+                  {isDone && <Check size={11} color={Colors.success} strokeWidth={2.5} />}
+                  <Text
+                    style={[
+                      styles.statusTagText,
+                      isDone ? styles.doneTagText : styles.draftTagText,
+                    ]}
+                  >
+                    {isDone ? 'Complete' : 'Draft'}
                   </Text>
                 </View>
               </View>
 
-              <Text style={styles.sectionHeadline} numberOfLines={2}>
-                {headline || 'Untitled Article — tap to write'}
+              <Text
+                style={[styles.sectionHeadline, !headline && styles.placeholderHeadline]}
+                numberOfLines={1}
+              >
+                {headline || 'Untitled article — tap to write or dictate'}
               </Text>
 
-              <Text style={styles.sectionBody} numberOfLines={3}>
-                {body || 'No text added yet. Use AI Headline & AI Expand to generate news content.'}
+              <Text style={styles.sectionBody} numberOfLines={2}>
+                {body || 'No body copy yet. Tap to dictate with voice or expand with AI.'}
               </Text>
 
               <View style={styles.cardFooter}>
-                <Text style={styles.editAction}>Edit Article with AI →</Text>
+                <View style={styles.miniProgressTrack}>
+                  <View
+                    style={[
+                      styles.miniProgressFill,
+                      {
+                        width: `${fillPercent}%`,
+                        backgroundColor: isDone ? Colors.success : Colors.brand500,
+                      },
+                    ]}
+                  />
+                </View>
+                <View style={styles.editActionRow}>
+                  <Sparkles size={12} color={Colors.brand500} strokeWidth={2} />
+                  <Text style={styles.editAction}>Edit & AI</Text>
+                  <ArrowRight size={12} color={Colors.brand500} strokeWidth={2.2} />
+                </View>
               </View>
             </TouchableOpacity>
           );
@@ -296,104 +564,333 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12, backgroundColor: Colors.navy900,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: Colors.navy900,
   },
-  backBtn: { paddingVertical: 4 },
-  backText: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '600' },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 3,
+  },
+  backText: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '600' },
   headerCenter: { flex: 1, alignItems: 'center', marginHorizontal: 8 },
-  headerTitle: { color: '#ffffff', fontWeight: '800', fontSize: 16 },
-  headerSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 1 },
-  headerActions: { flexDirection: 'row', alignItems: 'center' },
+  headerTitle: { color: '#ffffff', fontWeight: '800', fontSize: 15 },
+  headerSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 11, marginTop: 1 },
   printHeaderBtn: {
-    backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
-  printHeaderText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
+  printHeaderText: { color: '#ffffff', fontSize: 12.5, fontWeight: '700' },
   statusBar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#ffffff', paddingHorizontal: 16, paddingVertical: 10,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  advanceBtn: {
-    backgroundColor: Colors.brand500, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 6,
+  toolbarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  advanceBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
+  fillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: Colors.brand500,
+    backgroundColor: Colors.brand50,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  fillBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: Colors.brand600,
+  },
+  readinessBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.navy900,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  readinessBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
+  validationCard: {
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+  },
+  validationSuccess: {
+    backgroundColor: Colors.successLight,
+    borderColor: Colors.successBorder,
+  },
+  validationWarning: {
+    backgroundColor: Colors.warningLight,
+    borderColor: Colors.warningBorder,
+  },
+  validationTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  validationTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    flex: 1,
+  },
+  validationBadgeIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  validationTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.navy900,
+    flex: 1,
+  },
+  validationPrintBtn: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: Colors.success,
+    borderRadius: 8,
+    paddingVertical: 7,
+  },
+  validationPrintText: {
+    color: '#ffffff',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  jumpChipsRow: {
+    gap: 6,
+    paddingTop: 8,
+  },
+  jumpChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: Colors.warningBorder,
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  jumpChipPage: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#92400e',
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  jumpChipName: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: Colors.ink,
+  },
   pageTabs: {
-    flexDirection: 'row', backgroundColor: '#ffffff',
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
   pageTab: {
-    flex: 1, paddingVertical: 10, alignItems: 'center',
-    borderBottomWidth: 2, borderBottomColor: 'transparent',
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
   pageTabActive: {
-    borderBottomColor: Colors.brand500, backgroundColor: Colors.brand50,
+    borderBottomColor: Colors.brand500,
+    backgroundColor: Colors.brand50,
   },
-  pageTabNum: { fontSize: 13, fontWeight: '800', color: Colors.muted },
-  pageTabNumActive: { color: Colors.brand500 },
-  pageTabLabel: { fontSize: 10, color: Colors.muted, marginTop: 2, fontWeight: '600' },
-  pageTabLabelActive: { color: Colors.brand600, fontWeight: '700' },
-  scroll: { padding: 16, paddingBottom: 32 },
+  pageTabTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pageTabNum: { fontSize: 12, fontWeight: '800', color: Colors.ink },
+  pageTabNumActive: { color: Colors.brand600 },
+  pageTabCount: { fontSize: 10.5, fontWeight: '700' },
+  pageTabLabel: { fontSize: 10, color: Colors.muted, marginTop: 1, fontWeight: '500' },
+  pageTabLabelActive: { color: Colors.brand600, fontWeight: '600' },
+  scroll: { padding: 12, paddingBottom: 24 },
   templateSection: {
-    backgroundColor: '#ffffff', borderRadius: 14, padding: 14,
-    marginBottom: 16, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: '#ffffff',
+    borderRadius: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  templateHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  templateHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
   },
   templateHeaderTitle: {
-    fontSize: 11, fontWeight: '800', color: Colors.muted, letterSpacing: 0.5,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: Colors.muted,
   },
   templateHeaderDesc: {
-    fontSize: 12, color: Colors.textSecondary, marginTop: 2, marginBottom: 10,
+    fontSize: 11.5,
+    color: Colors.muted,
+    flex: 1,
+  },
+  templateToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingLeft: 8,
+  },
+  templateToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.brand600,
   },
   templateCardsRow: {
-    flexDirection: 'row', gap: 8,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
   templateCard: {
-    flex: 1, backgroundColor: '#ffffff', borderRadius: 10,
-    borderWidth: 1.5, borderColor: Colors.border, padding: 8, alignItems: 'center',
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    padding: 7,
+    alignItems: 'center',
   },
   templateCardActive: {
-    borderColor: Colors.brand500, backgroundColor: Colors.brand50,
+    borderColor: Colors.brand500,
+    backgroundColor: Colors.brand50,
   },
   templateCardName: {
-    fontSize: 11, fontWeight: '700', color: Colors.muted, marginTop: 6, textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.muted,
+    marginTop: 5,
+    textAlign: 'center',
   },
   templateCardNameActive: {
     color: Colors.brand600,
   },
   sectionCard: {
-    backgroundColor: '#ffffff', borderRadius: 14, padding: 16,
-    marginBottom: 12, borderWidth: 1, borderColor: Colors.border,
-    shadowColor: Colors.shadow, shadowOpacity: 1, shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6, elevation: 2,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   sectionCardDone: {
     borderColor: Colors.successBorder,
   },
   cardHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
-  blockInfo: { flex: 1 },
-  blockName: { fontSize: 14, fontWeight: '700', color: Colors.navy900 },
-  capacityText: { fontSize: 11, color: Colors.muted, marginTop: 2 },
-  statusTag: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  doneTag: { backgroundColor: Colors.successLight },
+  blockInfo: { flex: 1, marginRight: 8 },
+  blockName: { fontSize: 13.5, fontWeight: '700', color: Colors.navy900 },
+  capacityText: { fontSize: 11, color: Colors.muted, marginTop: 1 },
+  statusTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+  },
+  doneTag: { backgroundColor: Colors.successLight, borderWidth: 1, borderColor: Colors.successBorder },
   draftTag: { backgroundColor: Colors.navy50 },
-  statusTagText: { fontSize: 11, fontWeight: '700' },
+  statusTagText: { fontSize: 10.5, fontWeight: '700' },
   doneTagText: { color: Colors.success },
   draftTagText: { color: Colors.muted },
   sectionHeadline: {
-    fontSize: 15, fontWeight: '700', color: Colors.ink,
-    lineHeight: 20, marginBottom: 6,
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.ink,
+    lineHeight: 19,
+    marginBottom: 3,
+  },
+  placeholderHeadline: {
+    color: Colors.textMuted,
+    fontWeight: '600',
   },
   sectionBody: {
-    fontSize: 13, color: Colors.muted, lineHeight: 18,
+    fontSize: 12.5,
+    color: Colors.muted,
+    lineHeight: 17,
   },
   cardFooter: {
-    marginTop: 10, paddingTop: 10, borderTopWidth: 1,
-    borderTopColor: Colors.border, flexDirection: 'row', justifyContent: 'flex-end',
+    marginTop: 8,
+    paddingTop: 7,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
   },
-  editAction: { fontSize: 13, fontWeight: '700', color: Colors.brand500 },
+  miniProgressTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: Colors.navy50,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  miniProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  editActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  editAction: { fontSize: 12, fontWeight: '700', color: Colors.brand500 },
 });

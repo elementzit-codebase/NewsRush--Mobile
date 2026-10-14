@@ -1,4 +1,5 @@
-export const API_BASE_URL = 'https://www.newsrush.elementzit.com/api';
+export const SERVER_ORIGIN = 'https://www.newsrush.elementzit.com';
+export const API_BASE_URL = `${SERVER_ORIGIN}/api`;
 
 export const ENDPOINTS = {
   auth: {
@@ -13,6 +14,7 @@ export const ENDPOINTS = {
     me: '/users/me',
     list: '/users',
     approve: (id: string | number) => `/users/${id}/approve`,
+    reject: (id: string | number) => `/users/${id}/reject`,
     changePassword: '/users/me/password',
     profilePic: '/users/me/profile-pic',
   },
@@ -32,5 +34,7 @@ export const ENDPOINTS = {
   ai: {
     headline: '/ai/headline',
     expand: '/ai/expand',
+    transcribe: '/ai/transcribe',
   },
 };
+

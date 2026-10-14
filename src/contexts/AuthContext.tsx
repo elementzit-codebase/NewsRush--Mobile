@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
 import { login as apiLogin, logout as apiLogout, getMe } from '../api/auth';
-import { setTokens, removeToken, getToken } from '../api/client';
+import { setTokens, removeToken, getToken, setSessionExpiredHandler } from '../api/client';
 
 interface AuthContextType {
   user: User | null;
@@ -19,6 +19,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setUser(null);
+    });
     checkAuth();
   }, []);
 

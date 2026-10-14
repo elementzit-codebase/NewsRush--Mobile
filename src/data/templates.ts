@@ -218,30 +218,41 @@ const CAPACITY_MULTIPLIERS: Record<string, number> = {
   small: 0.25,
 };
 
+export interface PageRow {
+  weight: number;
+  blocks: TemplateBlock[];
+}
+
 export function buildPage(pageNumber: number, templateKey: string) {
   const template = templateFor(pageNumber, templateKey);
 
-  const blocks: TemplateBlock[] = [];
-  template.rows.forEach(row => {
-    row.blocks.forEach(([key, span, size]) => {
+  const rows: PageRow[] = template.rows.map(row => {
+    const rowBlocks: TemplateBlock[] = row.blocks.map(([key, span, size]) => {
       const meta = CANONICAL_SECTIONS[key] || { section_key: key, section_name: key, defaultCharLimit: 2000 };
       const charLimit = Math.round(meta.defaultCharLimit * (CAPACITY_MULTIPLIERS[size] || 0.5));
-      blocks.push({
+      return {
         section_key: key,
         section_name: meta.section_name,
         span,
         size,
         charLimit: charLimit > 0 ? charLimit : meta.defaultCharLimit,
         page_number: pageNumber,
-      });
+      };
     });
+    return {
+      weight: row.weight,
+      blocks: rowBlocks,
+    };
   });
+
+  const blocks: TemplateBlock[] = rows.flatMap(r => r.blocks);
 
   return {
     pageNumber,
     templateKey: template.key,
     templateName: template.name,
     description: template.description,
+    rows,
     blocks,
   };
 }

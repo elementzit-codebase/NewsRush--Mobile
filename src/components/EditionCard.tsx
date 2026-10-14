@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Trash2, Calendar, Printer, ChevronRight } from 'lucide-react-native';
 import { Colors } from '../constants/colors';
 import { EditionSummary } from '../types';
 import StatusBadge from './StatusBadge';
-import NewspaperThumb from './NewspaperThumb';
 
 interface Props {
   edition: EditionSummary;
@@ -32,18 +32,18 @@ export default function EditionCard({
     : '';
 
   const percent = Math.min(100, Math.round((completedCount / TOTAL_SECTIONS) * 100));
-  const isAllDone = completedCount >= TOTAL_SECTIONS || edition.status === 'completed' || edition.status === 'ready';
+  const isAllDone =
+    completedCount >= TOTAL_SECTIONS ||
+    edition.status === 'completed' ||
+    edition.status === 'ready';
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onOpen}
+      activeOpacity={0.82}
+    >
       <View style={styles.mainRow}>
-        {/* Newspaper Thumbnail */}
-        <NewspaperThumb
-          masthead={edition.newspaper_name || 'DAILY NEWS'}
-          art="city"
-          size="md"
-        />
-
         {/* Info Column */}
         <View style={styles.infoCol}>
           <View style={styles.topMeta}>
@@ -56,20 +56,19 @@ export default function EditionCard({
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={styles.deleteIconBtn}
               >
-                <Text style={styles.deleteIconText}>🗑</Text>
+                <Trash2 size={15} color={Colors.muted} strokeWidth={1.8} />
               </TouchableOpacity>
             )}
           </View>
 
-          <TouchableOpacity onPress={onOpen} activeOpacity={0.7}>
-            <Text style={styles.newspaperName} numberOfLines={2}>
-              {edition.newspaper_name || edition.title || 'NewsRush'}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.dateText}>
-            📅 {formattedDate}
+          <Text style={styles.newspaperName} numberOfLines={1}>
+            {edition.newspaper_name || edition.title || 'NewsRush'}
           </Text>
+
+          <View style={styles.dateRow}>
+            <Calendar size={12} color={Colors.muted} strokeWidth={1.8} />
+            <Text style={styles.dateText}>{formattedDate}</Text>
+          </View>
 
           {/* Progress towards 19 sections */}
           <View style={styles.progressContainer}>
@@ -92,47 +91,47 @@ export default function EditionCard({
             </View>
           </View>
         </View>
+
+        {/* Right middle carousel chevron */}
+        <View style={styles.chevronBox}>
+          <ChevronRight size={20} color={Colors.muted} strokeWidth={2.4} />
+        </View>
       </View>
 
-      {/* Footer / Actions */}
+      {/* Footer / Status & Print */}
       <View style={styles.footerRow}>
         <StatusBadge status={edition.status} />
 
-        <View style={styles.actionButtons}>
-          {isAllDone && onPrint && (
-            <TouchableOpacity style={styles.printBtn} onPress={onPrint} activeOpacity={0.7}>
-              <Text style={styles.printBtnText}>🖨 Print</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity style={styles.openEditorBtn} onPress={onOpen} activeOpacity={0.7}>
-            <Text style={styles.openEditorText}>Open editor →</Text>
+        {isAllDone && onPrint && (
+          <TouchableOpacity style={styles.printBtn} onPress={onPrint} activeOpacity={0.7}>
+            <Printer size={13} color={Colors.success} strokeWidth={2} />
+            <Text style={styles.printBtnText}>Print</Text>
           </TouchableOpacity>
-        </View>
+        )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 16,
-    marginHorizontal: 16,
-    marginVertical: 6,
+    padding: 12,
+    marginHorizontal: 14,
+    marginVertical: 4,
     shadowColor: Colors.shadow,
     shadowOpacity: 1,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 5,
+    elevation: 1,
   },
   mainRow: {
     flexDirection: 'row',
-    gap: 14,
-    alignItems: 'flex-start',
+    gap: 8,
+    alignItems: 'center',
   },
   infoCol: {
     flex: 1,
@@ -142,31 +141,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   editionLabel: {
-    fontSize: 13,
+    fontSize: 11.5,
     fontWeight: '600',
     color: Colors.brand500,
   },
   deleteIconBtn: {
     padding: 2,
   },
-  deleteIconText: {
-    fontSize: 15,
-    color: Colors.muted,
-  },
   newspaperName: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '700',
     color: Colors.ink,
-    lineHeight: 22,
-    marginBottom: 4,
+    lineHeight: 20,
+    marginBottom: 3,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 6,
   },
   dateText: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.muted,
-    marginBottom: 8,
   },
   progressContainer: {
     marginTop: 2,
@@ -174,19 +174,19 @@ const styles = StyleSheet.create({
   progressLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   progressText: {
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.muted,
   },
   progressPercent: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: Colors.ink,
   },
   progressBarTrack: {
-    height: 6,
+    height: 5,
     backgroundColor: Colors.navy50,
     borderRadius: 3,
     overflow: 'hidden',
@@ -195,36 +195,32 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 3,
   },
+  chevronBox: {
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 2,
+    paddingRight: 2,
+  },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    marginTop: 14,
-    paddingTop: 12,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    marginTop: 10,
+    paddingTop: 8,
   },
   printBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
   },
   printBtnText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
     color: Colors.success,
-  },
-  openEditorBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-  },
-  openEditorText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.brand600,
   },
 });

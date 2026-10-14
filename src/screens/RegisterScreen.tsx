@@ -1,10 +1,29 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import {
+  ChevronLeft,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  User as UserIcon,
+  Phone,
+} from 'lucide-react-native';
 import { Colors } from '../constants/colors';
 import { register } from '../api/auth';
 import { AuthStackParamList } from '../navigation';
@@ -20,15 +39,27 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
 
+  const handlePhoneChange = (val: string) => {
+    const digitsOnly = val.replace(/\D/g, '').slice(0, 10);
+    setPhoneNumber(digitsOnly);
+    if (error) setError('');
+  };
+
   const handleRegister = async () => {
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim() || !phoneNumber.trim()) {
-      Alert.alert('Missing Details', 'Please fill in all fields');
+    setError('');
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password || !phoneNumber.trim()) {
+      setError('Please fill in all fields.');
       return;
     }
-    if (password.length < 6) {
-      Alert.alert('Weak Password', 'Password must be at least 6 characters');
+    if (!/^\d{10}$/.test(phoneNumber)) {
+      setError('Phone number must be exactly 10 digits.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
       return;
     }
 
@@ -43,7 +74,7 @@ export default function RegisterScreen() {
       });
       setRegisteredEmail(email.trim());
     } catch (err: any) {
-      Alert.alert('Registration Failed', err.message || 'Could not complete registration');
+      setError(err.message || 'Could not complete registration.');
     } finally {
       setSubmitting(false);
     }
@@ -51,124 +82,183 @@ export default function RegisterScreen() {
 
   if (registeredEmail) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.successCard}>
-            <Text style={styles.successIcon}>✓</Text>
-            <Text style={styles.successTitle}>Registration Received</Text>
+            <View style={styles.successIconWrap}>
+              <CheckCircle2 size={28} color={Colors.success} strokeWidth={2} />
+            </View>
+            <Text style={styles.successTitle}>Registration received</Text>
             <Text style={styles.successSub}>Account created for {registeredEmail}</Text>
             <Text style={styles.successDesc}>
-              A system user has to approve your account before you can sign in. You will not be able to log in until approved.
+              A system user has to approve your account before you can sign in. Ask an administrator to approve you on the Users page.
             </Text>
             <TouchableOpacity
-              style={styles.submitBtn}
+              style={[styles.submitBtn, { width: '100%' }]}
               onPress={() => navigation.navigate('Login')}
             >
-              <Text style={styles.submitBtnText}>Back to Sign In</Text>
+              <Text style={styles.submitBtnText}>Back to login</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Back Link */}
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
-          <Text style={styles.backText}>‹ Back to Sign In</Text>
-        </TouchableOpacity>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
+        >
+          {/* Back Link */}
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
+            <ChevronLeft size={16} color={Colors.brand500} strokeWidth={2.2} />
+            <Text style={styles.backText}>Back to sign in</Text>
+          </TouchableOpacity>
 
-        {/* Header */}
-        <View style={styles.heroSection}>
-          <Text style={styles.heroTitle}>Create your account</Text>
-          <Text style={styles.heroBody}>Register to join the newsroom.</Text>
-        </View>
-
-        {/* Form Card */}
-        <View style={styles.formCard}>
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>First Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="First name"
-                placeholderTextColor={Colors.textMuted}
-                value={firstName}
-                onChangeText={setFirstName}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Last Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Last name"
-                placeholderTextColor={Colors.textMuted}
-                value={lastName}
-                onChangeText={setLastName}
-              />
-            </View>
+          {/* Header */}
+          <View style={styles.heroSection}>
+            <Text style={styles.heroTitle}>Create your account</Text>
+            <Text style={styles.heroBody}>
+              A system user will approve your registration before you can sign in.
+            </Text>
           </View>
 
-          <Text style={styles.label}>Email Address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="name@example.com"
-            placeholderTextColor={Colors.textMuted}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
+          {/* Form Card */}
+          <View style={styles.formCard}>
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>First name</Text>
+                <View style={styles.inputBox}>
+                  <UserIcon size={15} color={Colors.muted} strokeWidth={1.8} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="First name"
+                    placeholderTextColor={Colors.textMuted}
+                    value={firstName}
+                    onChangeText={t => {
+                      setFirstName(t);
+                      if (error) setError('');
+                    }}
+                  />
+                </View>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Last name</Text>
+                <View style={styles.inputBox}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Last name"
+                    placeholderTextColor={Colors.textMuted}
+                    value={lastName}
+                    onChangeText={t => {
+                      setLastName(t);
+                      if (error) setError('');
+                    }}
+                  />
+                </View>
+              </View>
+            </View>
 
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="+1 555 0192"
-            placeholderTextColor={Colors.textMuted}
-            value={phoneNumber}
-            onChangeText={setPhoneNumber}
-            keyboardType="phone-pad"
-          />
+            <Text style={styles.label}>Email address</Text>
+            <View style={styles.inputBox}>
+              <Mail size={15} color={Colors.muted} strokeWidth={1.8} />
+              <TextInput
+                style={styles.input}
+                placeholder="name@example.com"
+                placeholderTextColor={Colors.textMuted}
+                value={email}
+                onChangeText={t => {
+                  setEmail(t);
+                  if (error) setError('');
+                }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
 
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.passwordWrapper}>
-            <TextInput
-              style={[styles.input, { flex: 1, marginBottom: 0 }]}
-              placeholder="Create password (min 6 chars)"
-              placeholderTextColor={Colors.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-            />
+            <Text style={styles.label}>Phone number</Text>
+            <View style={styles.inputBox}>
+              <Phone size={15} color={Colors.muted} strokeWidth={1.8} />
+              <TextInput
+                style={styles.input}
+                placeholder="10-digit mobile number"
+                placeholderTextColor={Colors.textMuted}
+                value={phoneNumber}
+                onChangeText={handlePhoneChange}
+                keyboardType="number-pad"
+                maxLength={10}
+              />
+            </View>
+
+            <Text style={styles.label}>Password</Text>
+            <View style={[styles.inputBox, { marginBottom: 4 }]}>
+              <Lock size={15} color={Colors.muted} strokeWidth={1.8} />
+              <TextInput
+                style={styles.input}
+                placeholder="At least 8 characters"
+                placeholderTextColor={Colors.textMuted}
+                value={password}
+                onChangeText={t => {
+                  setPassword(t);
+                  if (error) setError('');
+                }}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.eyeBtn}
+                onPress={() => setShowPassword(v => !v)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? (
+                  <EyeOff size={18} color={Colors.muted} strokeWidth={1.8} />
+                ) : (
+                  <Eye size={18} color={Colors.muted} strokeWidth={1.8} />
+                )}
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.hintText}>Must contain at least 8 characters.</Text>
+
+            {error ? (
+              <View style={styles.errorBox}>
+                <AlertCircle size={15} color={Colors.error} strokeWidth={2} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
             <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setShowPassword(v => !v)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
+              onPress={handleRegister}
+              disabled={submitting}
+              activeOpacity={0.85}
             >
-              <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁'}</Text>
+              {submitting ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={styles.submitBtnText}>Create account</Text>
+              )}
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.submitBtn} onPress={handleRegister} disabled={submitting}>
-            {submitting ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.submitBtnText}>Create Account</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.footerRow}>
-          <Text style={styles.footerText}>Already have an account? </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.loginLink}>Sign In</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <View style={styles.footerRow}>
+            <Text style={styles.footerText}>Already have an account? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.loginLink}>Sign in</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -178,87 +268,114 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   scrollContent: {
-    padding: 24,
-    paddingTop: 50,
-    paddingBottom: 40,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   backLink: {
-    marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 12,
+    alignSelf: 'flex-start',
   },
   backText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
     color: Colors.brand500,
   },
   heroSection: {
-    marginBottom: 24,
+    marginBottom: 14,
   },
   heroTitle: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '800',
     color: Colors.navy900,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   heroBody: {
-    fontSize: 15,
+    fontSize: 13,
     color: Colors.muted,
+    lineHeight: 18,
   },
   formCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 14,
+    padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     shadowColor: Colors.shadow,
     shadowOpacity: 1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 3,
-    marginBottom: 20,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 14,
   },
   row: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   label: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
     color: Colors.ink,
-    marginBottom: 6,
+    marginBottom: 5,
   },
-  input: {
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: Colors.ink,
-    backgroundColor: '#ffffff',
-    marginBottom: 14,
-  },
-  passwordWrapper: {
+  inputBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    height: 42,
+    backgroundColor: '#ffffff',
+    marginBottom: 10,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    fontSize: 13.5,
+    color: Colors.ink,
+    paddingVertical: 0,
   },
   eyeBtn: {
-    position: 'absolute',
-    right: 12,
     padding: 4,
   },
-  eyeIcon: {
-    fontSize: 18,
+  hintText: {
+    fontSize: 11.5,
+    color: Colors.muted,
+    marginBottom: 12,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.errorLight,
+    borderWidth: 1,
+    borderColor: Colors.errorBorder,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: Colors.error,
+    fontWeight: '500',
   },
   submitBtn: {
     backgroundColor: Colors.navy900,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 10,
+    height: 44,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   submitBtnText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
   footerRow: {
@@ -267,45 +384,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerText: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.muted,
   },
   loginLink: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.brand500,
   },
   successCard: {
-    backgroundColor: Colors.successLight,
-    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.successBorder,
-    padding: 24,
+    borderColor: Colors.border,
+    padding: 20,
     alignItems: 'center',
-    marginTop: 40,
   },
-  successIcon: {
-    fontSize: 32,
-    color: Colors.success,
+  successIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.successLight,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 12,
   },
   successTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: Colors.navy900,
     marginBottom: 4,
   },
   successSub: {
-    fontSize: 15,
+    fontSize: 13.5,
     fontWeight: '600',
     color: Colors.success,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   successDesc: {
-    fontSize: 14,
-    color: '#065f46',
+    fontSize: 13,
+    color: Colors.muted,
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
+    lineHeight: 19,
+    marginBottom: 18,
   },
 });

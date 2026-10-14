@@ -6,12 +6,29 @@ import {
 } from '../types';
 import { generateHeadline, expandContent } from './ai';
 
-export const getEditions = async (): Promise<EditionSummary[]> => {
-  const res = await get<any>(ENDPOINTS.editions.list);
+const MAX_PAGE_SIZE = 100;
+
+async function fetchAllPages<T>(endpoint: string): Promise<T[]> {
+  const sep = endpoint.includes('?') ? '&' : '?';
+  const res = await get<any>(`${endpoint}${sep}page=1&page_size=${MAX_PAGE_SIZE}`);
   if (Array.isArray(res)) return res;
-  if (res && Array.isArray(res.items)) return res.items;
+  if (res && Array.isArray(res.items)) {
+    const items: T[] = [...res.items];
+    const totalPages = res.total_pages || 1;
+    for (let p = 2; p <= totalPages; p++) {
+      const next = await get<any>(`${endpoint}${sep}page=${p}&page_size=${MAX_PAGE_SIZE}`);
+      if (next && Array.isArray(next.items)) {
+        items.push(...next.items);
+      }
+    }
+    return items;
+  }
   if (res && Array.isArray(res.data)) return res.data;
   return [];
+}
+
+export const getEditions = async (): Promise<EditionSummary[]> => {
+  return fetchAllPages<EditionSummary>(ENDPOINTS.editions.list);
 };
 
 export const createEdition = (data: CreateEditionRequest): Promise<Edition> => {
@@ -49,11 +66,7 @@ export const validateEdition = async (id: string | number): Promise<ValidationRe
 };
 
 export const listSections = async (editionId: string | number): Promise<Section[]> => {
-  const res = await get<any>(ENDPOINTS.sections.list(editionId));
-  if (Array.isArray(res)) return res;
-  if (res && Array.isArray(res.items)) return res.items;
-  if (res && Array.isArray(res.data)) return res.data;
-  return [];
+  return fetchAllPages<Section>(ENDPOINTS.sections.list(editionId));
 };
 
 export const saveSection = (

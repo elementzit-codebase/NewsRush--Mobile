@@ -4,43 +4,83 @@ import { API_BASE_URL } from '../constants/api';
 const ACCESS_KEY = 'newsrush_token';
 const REFRESH_KEY = 'newsrush_refresh_token';
 
+// In-memory token cache for synchronous, atomic, race-free reads
+let cachedAccessToken: string | null = null;
+let cachedRefreshToken: string | null = null;
+let initPromise: Promise<void> | null = null;
+
+export const initTokens = async (): Promise<void> => {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    try {
+      const [access, refresh] = await Promise.all([
+        SecureStore.getItemAsync(ACCESS_KEY),
+        SecureStore.getItemAsync(REFRESH_KEY),
+      ]);
+      cachedAccessToken = access;
+      cachedRefreshToken = refresh;
+    } catch {
+      cachedAccessToken = null;
+      cachedRefreshToken = null;
+    }
+  })();
+  return initPromise;
+};
+
+// Start token initialization immediately on module load
+initTokens();
+
 export const getToken = async (): Promise<string | null> => {
-  try {
-    return await SecureStore.getItemAsync(ACCESS_KEY);
-  } catch {
-    return null;
-  }
+  await initTokens();
+  return cachedAccessToken;
 };
 
 export const getRefreshToken = async (): Promise<string | null> => {
-  try {
-    return await SecureStore.getItemAsync(REFRESH_KEY);
-  } catch {
-    return null;
-  }
+  await initTokens();
+  return cachedRefreshToken;
 };
 
 export const setTokens = async (tokens: { access_token?: string; refresh_token?: string; token?: string }): Promise<void> => {
   const access = tokens.access_token || tokens.token;
   if (access && typeof access === 'string') {
-    await SecureStore.setItemAsync(ACCESS_KEY, access);
+    cachedAccessToken = access;
   }
   if (tokens.refresh_token && typeof tokens.refresh_token === 'string') {
-    await SecureStore.setItemAsync(REFRESH_KEY, tokens.refresh_token);
+    cachedRefreshToken = tokens.refresh_token;
   }
+
+  const writes: Promise<void>[] = [];
+  if (access && typeof access === 'string') {
+    writes.push(SecureStore.setItemAsync(ACCESS_KEY, access));
+  }
+  if (tokens.refresh_token && typeof tokens.refresh_token === 'string') {
+    writes.push(SecureStore.setItemAsync(REFRESH_KEY, tokens.refresh_token));
+  }
+  await Promise.all(writes);
 };
 
 export const setToken = async (token: string): Promise<void> => {
   if (token && typeof token === 'string') {
+    cachedAccessToken = token;
     await SecureStore.setItemAsync(ACCESS_KEY, token);
   }
 };
 
 export const removeToken = async (): Promise<void> => {
+  cachedAccessToken = null;
+  cachedRefreshToken = null;
   try {
-    await SecureStore.deleteItemAsync(ACCESS_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_KEY);
+    await Promise.all([
+      SecureStore.deleteItemAsync(ACCESS_KEY),
+      SecureStore.deleteItemAsync(REFRESH_KEY),
+    ]);
   } catch {}
+};
+
+/** Notified when the session genuinely expires so the UI can redirect cleanly */
+let onSessionExpired: () => void = () => {};
+export const setSessionExpiredHandler = (handler: () => void) => {
+  onSessionExpired = handler;
 };
 
 interface RequestOptions {
@@ -50,23 +90,38 @@ interface RequestOptions {
   auth?: boolean;
 }
 
+// Single in-flight refresh promise mutex
 let refreshInFlight: Promise<boolean> | null = null;
 
 async function refreshAccessToken(): Promise<boolean> {
-  const refresh_token = await getRefreshToken();
-  if (!refresh_token) return false;
+  // If another request is currently refreshing tokens, reuse that exact promise
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
 
-  if (refreshInFlight) return refreshInFlight;
+  await initTokens();
+  const currentRefresh = cachedRefreshToken;
+  if (!currentRefresh) {
+    return false;
+  }
 
   refreshInFlight = (async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token }),
+        body: JSON.stringify({ refresh_token: currentRefresh }),
       });
-      if (!response.ok) return false;
+
+      if (!response.ok) {
+        return false;
+      }
+
       const data = await response.json();
+      if (!data.access_token) {
+        return false;
+      }
+
       await setTokens(data);
       return true;
     } catch {
@@ -104,7 +159,10 @@ async function send(endpoint: string, options: RequestOptions = {}) {
     config.body = isFormData ? (body as FormData) : JSON.stringify(body);
   }
 
-  return fetch(`${API_BASE_URL}${endpoint}`, config);
+  return {
+    response: await fetch(`${API_BASE_URL}${endpoint}`, config),
+    usedToken: token,
+  };
 }
 
 export const apiRequest = async <T>(
@@ -112,26 +170,49 @@ export const apiRequest = async <T>(
   options: RequestOptions = {}
 ): Promise<T> => {
   const { auth = true } = options;
-  let response: Response;
+  let resObj: { response: Response; usedToken: string | null };
 
   const maxAttempts = 2;
   let lastError: any = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      response = await send(endpoint, options);
+      resObj = await send(endpoint, options);
     } catch {
       throw { message: 'Cannot reach the server. Please check your connection.', status: 0 };
     }
 
-    // If 401, attempt refresh token replay once
+    let { response, usedToken } = resObj;
+
+    // If 401 on an authenticated endpoint (and not the login route itself)
     if (response.status === 401 && auth && !endpoint.includes('/auth/login')) {
-      const refreshed = await refreshAccessToken();
-      if (refreshed) {
-        response = await send(endpoint, options);
-      } else {
-        await removeToken();
-        throw { message: 'Your session has expired. Please sign in again.', status: 401 };
+      // Check if another concurrent request already refreshed the token while we were in flight
+      const currentToken = cachedAccessToken;
+      if (currentToken && usedToken && currentToken !== usedToken) {
+        // Try immediately with the freshly updated token
+        try {
+          const retried = await send(endpoint, options);
+          response = retried.response;
+        } catch {
+          throw { message: 'Cannot reach the server. Please check your connection.', status: 0 };
+        }
+      }
+
+      // If still 401, perform token refresh
+      if (response.status === 401) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          try {
+            const retried = await send(endpoint, options);
+            response = retried.response;
+          } catch {
+            throw { message: 'Cannot reach the server. Please check your connection.', status: 0 };
+          }
+        } else {
+          await removeToken();
+          onSessionExpired();
+          throw { message: 'Your session has expired. Please sign in again.', status: 401 };
+        }
       }
     }
 
