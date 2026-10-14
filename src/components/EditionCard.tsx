@@ -47,9 +47,16 @@ export default function EditionCard({
         {/* Info Column */}
         <View style={styles.infoCol}>
           <View style={styles.topMeta}>
-            <Text style={styles.editionLabel} numberOfLines={1}>
-              {edition.edition_label || 'Edition'}
-            </Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.editionLabel} numberOfLines={1}>
+                {edition.edition_label || 'Edition'}
+              </Text>
+              {edition.language ? (
+                <Text style={styles.langTagText}>
+                  · {edition.language.toLowerCase() === 'malayalam' ? 'മലയാളം' : edition.language.toUpperCase()}
+                </Text>
+              ) : null}
+            </View>
             {onDelete && (
               <TouchableOpacity
                 onPress={onDelete}
@@ -143,10 +150,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 1,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flex: 1,
+  },
   editionLabel: {
     fontSize: 11.5,
     fontWeight: '600',
     color: Colors.brand500,
+  },
+  langTagText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: Colors.muted,
+    letterSpacing: 0.3,
   },
   deleteIconBtn: {
     padding: 2,

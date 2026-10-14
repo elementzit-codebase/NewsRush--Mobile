@@ -45,6 +45,7 @@ export interface Edition {
   newspaper_name: string;
   date: string;
   edition_label: string;
+  language?: string;
   status: EditionStatus;
   created_by_id?: string;
   created_at?: string;
@@ -113,6 +114,7 @@ export interface CreateEditionRequest {
   newspaper_name: string;
   date: string;
   edition_label: string;
+  language?: string;
   status?: EditionStatus;
   title?: string;
 }

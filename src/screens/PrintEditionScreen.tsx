@@ -8,13 +8,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { Alert } from '../components/CustomAlert';
 import {
   ChevronLeft,
   ChevronRight,
@@ -28,6 +28,7 @@ import { Edition } from '../types';
 import { getEdition, updateEditionStatus } from '../api/editions';
 import { buildPage, DEFAULT_TEMPLATE } from '../data/templates';
 import { readTemplates } from '../lib/templateStore';
+import { formatMalayalamNewspaperText, isMalayalamEdition } from '../lib/malayalamTypography';
 import { RootStackParamList } from '../navigation';
 
 type Route = RouteProp<RootStackParamList, 'PrintEdition'>;
@@ -37,6 +38,66 @@ const SERIF_FONT = Platform.select({
   android: 'serif',
   default: 'serif',
 });
+
+function splitTextIntoColumns(text: string, count: number): string[] {
+  if (count <= 1) return [text];
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return Array(count).fill('');
+  }
+  const words = trimmed.split(/\s+/);
+  if (words.length === 0) {
+    return Array(count).fill('');
+  }
+
+  const totalWords = words.length;
+  const wordsPerCol = Math.ceil(totalWords / count);
+
+  const cols: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const start = i * wordsPerCol;
+    const end = Math.min(start + wordsPerCol, totalWords);
+    if (start < totalWords) {
+      cols.push(words.slice(start, end).join(' '));
+    } else {
+      cols.push('');
+    }
+  }
+
+  return cols;
+}
+
+function slicedCharHtml(char: string): string {
+  const cuts = ['30%', '54%', '78%'];
+  const cutsHtml = cuts
+    .map(
+      left =>
+        `<span style="position: absolute; top: -0.6em; bottom: -0.6em; width: 0.055em; background: #ffffff; left: ${left}; transform: rotate(45deg);"></span>`
+    )
+    .join('');
+  return `<span style="position: relative; display: inline-block; font-style: normal;">${char}<span style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: none;">${cutsHtml}</span></span>`;
+}
+
+function logoWordHtml(word: string): string {
+  return [...word]
+    .map((char, i) => (i > 0 && char === 'R' ? slicedCharHtml(char) : char))
+    .join('');
+}
+
+function mastheadHtml(name: string): string {
+  const words = (name || 'NewsRush Daily').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '';
+  const last = words.length - 1;
+  return words
+    .map((word, i) => {
+      const rendered = logoWordHtml(word);
+      if (words.length > 1 && i === last) {
+        return `<span class="title-daily">${rendered}</span>`;
+      }
+      return rendered;
+    })
+    .join(' ');
+}
 
 const formatLongDate = (iso?: string) => {
   const date = iso ? new Date(`${iso}T00:00:00`) : new Date();
@@ -55,7 +116,107 @@ const PAGE_NAMES = [
   'Page 4 · Features & Evening',
 ];
 
+function SlicedLetter({ char, isLarge }: { char: string; isLarge: boolean }) {
+  const cuts = ['30%', '54%', '78%'];
+  return (
+    <View style={styles.slicedCharContainer}>
+      <Text style={isLarge ? styles.mastheadTitleMain : styles.mastheadInnerTitleMain}>
+        {char}
+      </Text>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <View style={styles.slicedCutOverflow}>
+          {cuts.map((leftPercent, i) => (
+            <View
+              key={i}
+              style={[
+                styles.sliceCutBar,
+                { left: leftPercent as any },
+                isLarge ? styles.sliceCutBarLarge : styles.sliceCutBarSmall,
+              ]}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function renderWordParts(word: string, isLarge: boolean, wordIdx: number) {
+  const parts: React.ReactNode[] = [];
+  let current = '';
+
+  for (let i = 0; i < word.length; i++) {
+    const char = word[i];
+    if (i > 0 && char === 'R') {
+      if (current) {
+        parts.push(
+          <Text
+            key={`w${wordIdx}-t${i}`}
+            style={isLarge ? styles.mastheadTitleMain : styles.mastheadInnerTitleMain}
+          >
+            {current}
+          </Text>
+        );
+        current = '';
+      }
+      parts.push(
+        <SlicedLetter key={`w${wordIdx}-r${i}`} char="R" isLarge={isLarge} />
+      );
+    } else {
+      current += char;
+    }
+  }
+
+  if (current) {
+    parts.push(
+      <Text
+        key={`w${wordIdx}-end`}
+        style={isLarge ? styles.mastheadTitleMain : styles.mastheadInnerTitleMain}
+      >
+        {current}
+      </Text>
+    );
+  }
+
+  return parts;
+}
+
+const renderMastheadTitle = (name?: string, isLarge = true) => {
+  const words = (name || 'NewsRush Daily').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  const lastIdx = words.length - 1;
+
+  return (
+    <View style={isLarge ? styles.mastheadTitleRow : styles.mastheadInnerTitleRow}>
+      {words.map((word, i) => {
+        const isLastWord = words.length > 1 && i === lastIdx;
+        if (isLastWord) {
+          return (
+            <Text
+              key={i}
+              style={isLarge ? styles.mastheadTitleItalic : styles.mastheadInnerTitleItalic}
+            >
+              {' '}{word}
+            </Text>
+          );
+        }
+        return (
+          <React.Fragment key={i}>
+            {i > 0 && (
+              <Text style={isLarge ? styles.mastheadTitleMain : styles.mastheadInnerTitleMain}>
+                {' '}
+              </Text>
+            )}
+            {renderWordParts(word, isLarge, i)}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+};
+
 export default function PrintEditionScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<Route>();
   const { editionId } = route.params;
@@ -131,6 +292,8 @@ export default function PrintEditionScreen() {
     }).length;
   }, [templateSelection, savedSectionsMap]);
 
+  const isMalayalam = isMalayalamEdition(edition);
+
   const generateHtml = () => {
     const allPagesHtml = [1, 2, 3, 4]
       .map(pNum => {
@@ -140,22 +303,22 @@ export default function PrintEditionScreen() {
 
         const headerHtml = isFront
           ? `
-          <div class="masthead-front">
+          <header class="masthead-front">
             <div class="meta-bar">
               <span>${formatLongDate(edition?.date)}</span>
               <span>${(edition?.edition_label || 'Morning').toUpperCase()} EDITION</span>
             </div>
-            <div class="newspaper-name-large">${edition?.newspaper_name || 'NEWSRUSH'}</div>
-            <div class="tagline">YOUR TRUSTED SOURCE FOR BREAKING NEWS</div>
-            <div class="double-rule-top"></div>
-            <div class="double-rule-bottom"></div>
-          </div>
+            <h1 class="newspaper-title">
+              ${mastheadHtml(edition?.newspaper_name || 'NewsRush Daily')}
+            </h1>
+            <p class="tagline">YOUR TRUSTED SOURCE FOR BREAKING NEWS</p>
+          </header>
           `
           : `
-          <div class="masthead-inner">
-            <span class="inner-title">${edition?.newspaper_name || 'NEWSRUSH'}</span>
+          <header class="masthead-inner">
+            <span class="inner-title">${mastheadHtml(edition?.newspaper_name || 'NewsRush Daily')}</span>
             <span class="inner-page">${PAGE_NAMES[pNum - 1].split('·')[1]?.trim()?.toUpperCase()} · PAGE ${pNum}</span>
-          </div>
+          </header>
           `;
 
         const rowsHtml = pageLayout.rows
@@ -164,15 +327,16 @@ export default function PrintEditionScreen() {
               .map(block => {
                 const saved = savedSectionsMap.get(block.section_key);
                 const label = saved?.section_name || block.section_name;
-                const headline = saved?.title || label;
-                const body =
-                  saved?.content ||
-                  '<span style="color:#94a3b8; font-style:italic;">No text</span>';
+                const rawHeadline = saved?.title || label;
+                const headline = isMalayalam ? formatMalayalamNewspaperText(rawHeadline) : rawHeadline;
+                const rawContent = saved?.content || '';
+                const content = isMalayalam ? formatMalayalamNewspaperText(rawContent) : rawContent;
+                const numCols = block.span === 3 ? 5 : block.span === 2 ? 3 : 2;
                 return `
                   <div class="article-col span-${block.span}" style="flex: ${block.span};">
                     <div class="section-tag">${label.toUpperCase()}</div>
-                    <div class="headline span-${block.span}">${headline}</div>
-                    <div class="body">${body}</div>
+                    <h2 class="headline span-${block.span}">${headline}</h2>
+                    <div class="body cols-${numCols}">${content || '<span style="color:#94a3b8; font-style:italic;">No text</span>'}</div>
                   </div>
                 `;
               })
@@ -182,7 +346,7 @@ export default function PrintEditionScreen() {
           .join('');
 
         return `
-        <div class="sheet ${pNum < 4 ? 'page-break' : ''}">
+        <div class="sheet">
           ${headerHtml}
           <div class="rows-container">
             ${rowsHtml}
@@ -198,35 +362,191 @@ export default function PrintEditionScreen() {
 
     return `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         <meta charset="utf-8">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Anek+Malayalam:wght@400;500;600;700&family=Gayathri:wght@400;700&family=Inter:wght@400;500;600;700&family=Manjari:wght@400;700&family=Noto+Serif+Malayalam:wght@500;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,600;1,700&display=swap" rel="stylesheet">
         <style>
-          @page { size: 289mm 380mm; margin: 10mm; }
-          body { font-family: "Playfair Display", "Times New Roman", Georgia, serif; margin: 0; padding: 16px; color: #000; background: #fff; }
-          .sheet { max-width: 860px; margin: 0 auto 36px auto; padding-bottom: 16px; }
-          .page-break { page-break-after: always; }
-          .masthead-front { text-align: center; margin-bottom: 12px; }
-          .meta-bar { display: flex; justify-content: space-between; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; font-weight: 600; color: #334155; border-bottom: 1px solid #000; padding-bottom: 3px; }
-          .newspaper-name-large { font-size: 42px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; margin: 8px 0 2px 0; }
-          .tagline { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 8.5px; letter-spacing: 3px; text-transform: uppercase; color: #475569; margin: 0 0 6px 0; }
-          .double-rule-top { height: 3px; background: #000; width: 100%; margin-top: 4px; }
-          .double-rule-bottom { height: 1px; background: #000; width: 100%; margin-top: 2px; margin-bottom: 12px; }
-          .masthead-inner { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 12px; }
-          .inner-title { font-size: 18px; font-weight: bold; }
-          .inner-page { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 10.5px; font-weight: bold; text-transform: uppercase; color: #475569; }
-          .rows-container { display: flex; flex-direction: column; gap: 12px; }
-          .row { display: flex; flex-direction: row; gap: 14px; }
-          .row-divider { border-top: 1px solid rgba(0,0,0,0.2); padding-top: 10px; margin-top: 4px; }
-          .article-col { min-width: 0; }
-          .article-col + .article-col { border-left: 1px solid rgba(0,0,0,0.2); padding-left: 12px; }
-          .section-tag { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; font-weight: 800; letter-spacing: 0.8px; color: #1e293b; text-transform: uppercase; margin-bottom: 2px; }
-          .headline { font-weight: bold; line-height: 1.15; margin: 0 0 5px 0; color: #000; }
-          .headline.span-3 { font-size: 22px; }
-          .headline.span-2 { font-size: 17px; }
-          .headline.span-1 { font-size: 14px; }
-          .body { font-size: 12px; line-height: 1.5; color: #111827; text-align: justify; white-space: pre-wrap; }
-          .sheet-footer { display: flex; justify-content: space-between; border-top: 1px solid #000; padding-top: 4px; margin-top: 16px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 9px; color: #64748b; }
+          @page { size: 289mm 380mm; margin: 0; }
+          * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: #fff;
+            -webkit-font-smoothing: antialiased;
+          }
+          .sheet {
+            width: 289mm;
+            height: 380mm;
+            max-height: 380mm;
+            margin: 0 auto;
+            padding: 10mm;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            page-break-after: always;
+            break-after: page;
+          }
+          .sheet:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
+          .masthead-front {
+            border-bottom: 3.5px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+          }
+          .meta-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 1px solid #000;
+            padding-bottom: 4px;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 9pt;
+            font-weight: 600;
+            color: #1e293b;
+            text-transform: uppercase;
+          }
+          .newspaper-title {
+            margin: 8px 0 4px 0;
+            text-align: center;
+            font-family: "Playfair Display", Georgia, serif;
+            font-size: 42pt;
+            line-height: 1;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: #000;
+          }
+          .newspaper-title .title-daily {
+            font-size: 0.7em;
+            font-style: italic;
+            font-weight: normal;
+          }
+          .tagline {
+            margin: 4px 0 0 0;
+            text-align: center;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 8pt;
+            font-weight: 700;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: #334155;
+          }
+          .masthead-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 1px solid #000;
+            padding-bottom: 6px;
+            margin-bottom: 12px;
+          }
+          .inner-title {
+            font-family: "Playfair Display", Georgia, serif;
+            font-size: 15pt;
+            font-weight: 700;
+            line-height: 1;
+            color: #000;
+          }
+          .inner-title .title-daily {
+            font-size: 0.7em;
+            font-style: italic;
+            font-weight: normal;
+          }
+          .inner-page {
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 9pt;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: #475569;
+          }
+          .rows-container {
+            display: flex;
+            flex-direction: column;
+            gap: 4mm;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+          }
+          .row {
+            display: flex;
+            flex-direction: row;
+            gap: 4mm;
+            min-height: 0;
+            overflow: hidden;
+          }
+          .row-divider {
+            border-top: 1px solid rgba(0,0,0,0.25);
+            padding-top: 8px;
+          }
+          .article-col {
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+          }
+          .article-col + .article-col {
+            border-left: 1px solid rgba(0,0,0,0.25);
+            padding-left: 4mm;
+          }
+          .section-tag {
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 7.5pt;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            color: #000;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+          }
+          .headline {
+            font-family: ${isMalayalam ? '"Noto Serif Malayalam", "Anek Malayalam", serif' : '"Playfair Display", Georgia, serif'};
+            font-weight: 700;
+            line-height: 1.1;
+            margin: 2px 0 6px 0;
+            color: #000;
+            letter-spacing: -0.02em;
+            break-after: avoid;
+          }
+          .headline.span-3 { font-size: 21pt; }
+          .headline.span-2 { font-size: 17pt; }
+          .headline.span-1 { font-size: 13.5pt; }
+
+          .body {
+            font-family: ${isMalayalam ? '"Anek Malayalam", sans-serif' : 'Georgia, "Times New Roman", serif'};
+            font-size: ${isMalayalam ? '8.8pt' : '8.5pt'};
+            line-height: ${isMalayalam ? '1.4' : '1.35'};
+            color: #0f172a;
+            text-align: justify;
+            column-gap: 4mm;
+            column-rule: 0.4pt solid rgba(0,0,0,0.25);
+            hyphens: ${isMalayalam ? 'none' : 'auto'};
+            ${isMalayalam ? 'text-justify: inter-word; word-break: normal; overflow-wrap: break-word; line-break: loose;' : ''}
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+          }
+          .body.cols-5 { column-count: 5; }
+          .body.cols-3 { column-count: 3; }
+          .body.cols-2 { column-count: 2; }
+
+          .sheet-footer {
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #000;
+            padding-top: 4px;
+            margin-top: 14px;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 7.5pt;
+            color: #64748b;
+          }
         </style>
       </head>
       <body>
@@ -236,11 +556,18 @@ export default function PrintEditionScreen() {
     `;
   };
 
+  const TABLOID_WIDTH = 819; // 289mm @ 72 PPI
+  const TABLOID_HEIGHT = 1077; // 380mm @ 72 PPI
+
   const handlePrint = async () => {
     if (!edition) return;
     try {
       const html = generateHtml();
-      await Print.printAsync({ html });
+      await Print.printAsync({
+        html,
+        width: TABLOID_WIDTH,
+        height: TABLOID_HEIGHT,
+      });
     } catch (e: any) {
       Alert.alert('Print Error', e.message || 'Failed to print edition');
     }
@@ -250,7 +577,11 @@ export default function PrintEditionScreen() {
     if (!edition) return;
     try {
       const html = generateHtml();
-      const { uri } = await Print.printToFileAsync({ html });
+      const { uri } = await Print.printToFileAsync({
+        html,
+        width: TABLOID_WIDTH,
+        height: TABLOID_HEIGHT,
+      });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: 'application/pdf',
@@ -258,12 +589,20 @@ export default function PrintEditionScreen() {
           UTI: 'com.adobe.pdf',
         });
       } else {
-        await Print.printAsync({ html });
+        await Print.printAsync({
+          html,
+          width: TABLOID_WIDTH,
+          height: TABLOID_HEIGHT,
+        });
       }
     } catch {
       try {
         const html = generateHtml();
-        await Print.printAsync({ html });
+        await Print.printAsync({
+          html,
+          width: TABLOID_WIDTH,
+          height: TABLOID_HEIGHT,
+        });
       } catch (err: any) {
         Alert.alert('Export Error', err.message || 'Failed to export or print');
       }
@@ -392,21 +731,16 @@ export default function PrintEditionScreen() {
                         </Text>
                       </View>
                       <View style={styles.hairlineRule} />
-                      <Text style={styles.mastheadTitleLarge}>
-                        {edition?.newspaper_name?.toUpperCase() || 'NEWSRUSH'}
-                      </Text>
+                      {renderMastheadTitle(edition?.newspaper_name, true)}
                       <Text style={styles.mastheadTagline}>
                         YOUR TRUSTED SOURCE FOR BREAKING NEWS
                       </Text>
-                      <View style={styles.mastheadDoubleRuleTop} />
-                      <View style={styles.mastheadDoubleRuleBottom} />
+                      <View style={styles.mastheadBottomBar} />
                     </View>
                   ) : (
                     <View style={styles.mastheadInner}>
                       <View style={styles.mastheadInnerRow}>
-                        <Text style={styles.mastheadInnerTitle}>
-                          {edition?.newspaper_name?.toUpperCase() || 'NEWSRUSH'}
-                        </Text>
+                        {renderMastheadTitle(edition?.newspaper_name, false)}
                         <Text style={styles.mastheadInnerPage}>
                           {PAGE_NAMES[pNum - 1].split('·')[1]?.trim()?.toUpperCase()} · PAGE {pNum}
                         </Text>
@@ -428,8 +762,12 @@ export default function PrintEditionScreen() {
                         {row.blocks.map((block, blockIdx) => {
                           const sec = savedSectionsMap.get(block.section_key);
                           const label = sec?.section_name?.trim() || block.section_name;
-                          const headline = sec?.title?.trim() || '';
-                          const content = sec?.content?.trim() || '';
+                          const rawHeadline = sec?.title?.trim() || '';
+                          const headline = isMalayalam ? formatMalayalamNewspaperText(rawHeadline) : rawHeadline;
+                          const rawContent = sec?.content?.trim() || '';
+                          const content = isMalayalam ? formatMalayalamNewspaperText(rawContent) : rawContent;
+                          const numCols = block.span === 3 ? 5 : block.span === 2 ? 3 : 2;
+                          const columnTexts = splitTextIntoColumns(content, numCols);
 
                           return (
                             <View
@@ -453,9 +791,26 @@ export default function PrintEditionScreen() {
                               >
                                 {headline || 'Untitled Story'}
                               </Text>
-                              <Text style={styles.articleBody}>
-                                {content || 'No content provided for this section.'}
-                              </Text>
+
+                              {content ? (
+                                <View style={styles.articleColumnsContainer}>
+                                  {columnTexts.map((colText, colIdx) => (
+                                    <View
+                                      key={colIdx}
+                                      style={[
+                                        styles.articleColumn,
+                                        colIdx > 0 && styles.articleColumnDivider,
+                                      ]}
+                                    >
+                                      <Text style={[styles.articleBody, isMalayalam && styles.malayalamBody]}>
+                                        {colText}
+                                      </Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              ) : (
+                                <Text style={styles.emptyBodyText}>No text</Text>
+                              )}
                             </View>
                           );
                         })}
@@ -483,7 +838,12 @@ export default function PrintEditionScreen() {
       />
 
       {/* Bottom Completion Bar */}
-      <View style={styles.bottomBar}>
+      <View
+        style={[
+          styles.bottomBar,
+          { paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 10) },
+        ]}
+      >
         <View style={styles.statusInfo}>
           <Text style={styles.statusLabel}>Status:</Text>
           <Text style={styles.statusVal}>{edition?.status?.toUpperCase()}</Text>
@@ -646,48 +1006,77 @@ const styles = StyleSheet.create({
   mastheadDateText: {
     fontSize: 9.5,
     fontWeight: '600',
-    color: '#334155',
+    color: '#1e293b',
   },
   mastheadEditionText: {
     fontSize: 9.5,
     fontWeight: '700',
-    color: '#334155',
+    color: '#1e293b',
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   hairlineRule: {
     height: 1,
     backgroundColor: '#000000',
     width: '100%',
   },
-  mastheadTitleLarge: {
-    fontFamily: SERIF_FONT,
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#000000',
-    textAlign: 'center',
-    letterSpacing: 1.5,
-    marginTop: 5,
+  mastheadTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginTop: 4,
     marginBottom: 2,
+  },
+  mastheadTitleMain: {
+    fontFamily: SERIF_FONT,
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: '700',
+    color: '#000000',
+    letterSpacing: -0.5,
+  },
+  mastheadTitleItalic: {
+    fontFamily: SERIF_FONT,
+    fontSize: 25,
+    lineHeight: 34,
+    fontStyle: 'italic',
+    fontWeight: 'normal',
+    color: '#000000',
+  },
+  slicedCharContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  slicedCutOverflow: {
+    ...StyleSheet.absoluteFill,
+    overflow: 'hidden',
+  },
+  sliceCutBar: {
+    position: 'absolute',
+    top: -10,
+    bottom: -10,
+    backgroundColor: '#ffffff',
+    transform: [{ rotate: '45deg' }],
+  },
+  sliceCutBarLarge: {
+    width: 2.2,
+  },
+  sliceCutBarSmall: {
+    width: 1.2,
   },
   mastheadTagline: {
     fontSize: 7.5,
     fontWeight: '700',
-    color: '#475569',
-    letterSpacing: 2,
+    color: '#334155',
+    letterSpacing: 2.2,
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 5,
+    textTransform: 'uppercase',
   },
-  mastheadDoubleRuleTop: {
-    height: 3,
+  mastheadBottomBar: {
+    height: 3.5,
     backgroundColor: '#000000',
     width: '100%',
-  },
-  mastheadDoubleRuleBottom: {
-    height: 1,
-    backgroundColor: '#000000',
-    width: '100%',
-    marginTop: 2,
-    marginBottom: 8,
   },
   mastheadInner: {
     marginBottom: 8,
@@ -698,18 +1087,30 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     paddingBottom: 4,
   },
-  mastheadInnerTitle: {
+  mastheadInnerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  mastheadInnerTitleMain: {
     fontFamily: SERIF_FONT,
-    fontSize: 15,
-    fontWeight: 'bold',
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '700',
     color: '#000000',
-    letterSpacing: 0.5,
+  },
+  mastheadInnerTitleItalic: {
+    fontFamily: SERIF_FONT,
+    fontSize: 12.5,
+    lineHeight: 18,
+    fontStyle: 'italic',
+    color: '#000000',
   },
   mastheadInnerPage: {
-    fontSize: 9.5,
+    fontSize: 9,
     fontWeight: '700',
     color: '#475569',
     letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   newspaperGrid: {
     width: '100%',
@@ -720,7 +1121,7 @@ const styles = StyleSheet.create({
   },
   gridRowDivider: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.2)',
+    borderTopColor: 'rgba(0,0,0,0.22)',
     paddingTop: 8,
     marginTop: 8,
   },
@@ -729,41 +1130,70 @@ const styles = StyleSheet.create({
   },
   articleColDivider: {
     borderLeftWidth: 1,
-    borderLeftColor: 'rgba(0,0,0,0.2)',
+    borderLeftColor: 'rgba(0,0,0,0.22)',
     paddingLeft: 8,
     marginLeft: 8,
   },
   articleSectionLabel: {
-    fontSize: 8.5,
+    fontSize: 8,
     fontWeight: '800',
     color: '#1e293b',
     letterSpacing: 0.8,
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
   articleHeadline: {
     fontFamily: SERIF_FONT,
     fontWeight: 'bold',
     color: '#000000',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   headlineSpan3: {
-    fontSize: 18,
+    fontSize: 19,
     lineHeight: 22,
+    letterSpacing: -0.3,
   },
   headlineSpan2: {
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: 15.5,
+    lineHeight: 18.5,
+    letterSpacing: -0.2,
   },
   headlineSpan1: {
     fontSize: 13,
-    lineHeight: 16.5,
+    lineHeight: 15.5,
+    letterSpacing: -0.1,
+  },
+  articleColumnsContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: 3,
+  },
+  articleColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  articleColumnDivider: {
+    borderLeftWidth: 0.6,
+    borderLeftColor: 'rgba(0, 0, 0, 0.22)',
+    marginLeft: 5,
+    paddingLeft: 5,
   },
   articleBody: {
     fontFamily: SERIF_FONT,
-    fontSize: 11,
-    lineHeight: 16,
-    color: '#1e293b',
+    fontSize: 9,
+    lineHeight: 12.8,
+    color: '#0f172a',
     textAlign: 'justify',
+  },
+  malayalamBody: {
+    fontSize: 8.5,
+    lineHeight: 12.2,
+  },
+  emptyBodyText: {
+    fontSize: 9,
+    fontStyle: 'italic',
+    color: '#94a3b8',
+    marginTop: 3,
   },
   sheetFooter: {
     marginTop: 12,

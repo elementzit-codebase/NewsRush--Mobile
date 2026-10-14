@@ -7,13 +7,13 @@ import {
   StyleSheet,
   TextInput,
   ActivityIndicator,
-  Alert,
   Modal,
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert } from '../components/CustomAlert';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -63,9 +63,9 @@ export default function WorkspaceScreen() {
 
   // New Edition Modal
   const [showCreate, setShowCreate] = useState(false);
-  const [newspaperName, setNewspaperName] = useState('NewsRush');
   const [editionLabel, setEditionLabel] = useState('Morning Edition');
   const [editionDate, setEditionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [language, setLanguage] = useState<'malayalam' | 'english'>('malayalam');
   const [creating, setCreating] = useState(false);
 
   const fetchEditions = async (quiet = false) => {
@@ -102,7 +102,7 @@ export default function WorkspaceScreen() {
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const list = (Array.isArray(editions) ? editions : []).filter(e => {
-      const titleStr = `${e?.newspaper_name || ''} ${e?.edition_label || ''} ${e?.title || ''}`.toLowerCase();
+      const titleStr = `${e?.newspaper_name || ''} ${e?.edition_label || ''} ${e?.title || ''} ${e?.language || ''}`.toLowerCase();
       const matchSearch = !needle || titleStr.includes(needle);
       const matchStatus = filterStatus === 'all' || e?.status === filterStatus;
       return matchSearch && matchStatus;
@@ -125,16 +125,17 @@ export default function WorkspaceScreen() {
   };
 
   const handleCreate = async () => {
-    if (!newspaperName.trim() || !editionLabel.trim()) {
-      Alert.alert('Error', 'Please fill in Newspaper Name and Edition Label');
+    if (!editionLabel.trim()) {
+      Alert.alert('Error', 'Please enter an Edition Label');
       return;
     }
     setCreating(true);
     try {
       const edition = await createEdition({
-        newspaper_name: newspaperName.trim(),
+        newspaper_name: 'NewsRush Daily',
         edition_label: editionLabel.trim(),
         date: editionDate || new Date().toISOString().split('T')[0],
+        language,
       });
       setShowCreate(false);
       navigation.navigate('Editor', { editionId: edition.id as any });
@@ -309,7 +310,7 @@ export default function WorkspaceScreen() {
         >
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Newspaper Edition</Text>
+              <Text style={styles.modalTitle}>New Edition</Text>
               <TouchableOpacity
                 onPress={() => setShowCreate(false)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -319,24 +320,6 @@ export default function WorkspaceScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalLabel}>Newspaper Name</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. NewsRush"
-              placeholderTextColor={Colors.textMuted}
-              value={newspaperName}
-              onChangeText={setNewspaperName}
-            />
-
-            <Text style={styles.modalLabel}>Edition Label</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Morning Edition"
-              placeholderTextColor={Colors.textMuted}
-              value={editionLabel}
-              onChangeText={setEditionLabel}
-            />
-
             <Text style={styles.modalLabel}>Publication Date (YYYY-MM-DD)</Text>
             <TextInput
               style={styles.modalInput}
@@ -345,6 +328,53 @@ export default function WorkspaceScreen() {
               value={editionDate}
               onChangeText={setEditionDate}
             />
+
+            <Text style={styles.modalLabel}>Edition Label</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Morning Edition, Evening"
+              placeholderTextColor={Colors.textMuted}
+              value={editionLabel}
+              onChangeText={setEditionLabel}
+            />
+
+            <Text style={styles.modalLabel}>Language</Text>
+            <View style={styles.langToggleBox}>
+              <TouchableOpacity
+                style={[
+                  styles.langOptionBtn,
+                  language === 'malayalam' && styles.langOptionBtnActive,
+                ]}
+                onPress={() => setLanguage('malayalam')}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.langOptionText,
+                    language === 'malayalam' && styles.langOptionTextActive,
+                  ]}
+                >
+                  മലയാളം
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.langOptionBtn,
+                  language === 'english' && styles.langOptionBtnActive,
+                ]}
+                onPress={() => setLanguage('english')}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.langOptionText,
+                    language === 'english' && styles.langOptionTextActive,
+                  ]}
+                >
+                  English
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowCreate(false)}>
@@ -524,6 +554,42 @@ const styles = StyleSheet.create({
     color: Colors.ink,
     backgroundColor: '#ffffff',
     marginBottom: 12,
+  },
+  langToggleBox: {
+    flexDirection: 'row',
+    gap: 8,
+    backgroundColor: Colors.canvas,
+    padding: 3,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+  },
+  langOptionBtn: {
+    flex: 1,
+    height: 34,
+    borderRadius: 7,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  langOptionBtnActive: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.shadow,
+    shadowOpacity: 1,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  langOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.muted,
+  },
+  langOptionTextActive: {
+    color: Colors.brand600,
+    fontWeight: '700',
   },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   cancelBtn: {

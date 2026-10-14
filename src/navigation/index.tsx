@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, BackHandler } from 'react-native';
+import { View, ActivityIndicator, BackHandler, Platform } from 'react-native';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -36,6 +36,7 @@ export type RootStackParamList = {
     initialContent?: string;
     initialStatus?: string;
     editionStatus: EditionStatus;
+    language?: string;
   };
   PrintEdition: { editionId: string | number };
 };
@@ -61,7 +62,9 @@ function MainTabs() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const isSystemUser = user?.is_system_user || user?.role === 'admin';
-  const bottomInset = insets.bottom > 0 ? insets.bottom : 8;
+  // On Android 15+ edge-to-edge screens, 3-button navigation overlays the bottom.
+  // Ensure a floor of 28dp padding so labels/icons are never obscured by the back/home buttons.
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 28 : 10);
   const tabHeight = 52 + bottomInset;
 
   return (
@@ -86,8 +89,8 @@ function MainTabs() {
           borderTopColor: Colors.border,
           borderTopWidth: 1,
           height: tabHeight,
-          paddingBottom: bottomInset,
-          paddingTop: 5,
+          paddingBottom: bottomInset - 4,
+          paddingTop: 6,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         headerShown: false,
@@ -122,6 +125,17 @@ function AppStack() {
   );
 }
 
+const linking = {
+  prefixes: ['newsrush://', 'https://www.newsrush.elementzit.com'],
+  config: {
+    screens: {
+      ResetPassword: 'reset-password',
+      Login: 'login',
+      ForgotPassword: 'forgot-password',
+    },
+  },
+};
+
 export default function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
   const navigationRef = useNavigationContainerRef();
@@ -148,7 +162,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} linking={linking}>
       {isAuthenticated ? <AppStack /> : <AuthNavigator />}
     </NavigationContainer>
   );

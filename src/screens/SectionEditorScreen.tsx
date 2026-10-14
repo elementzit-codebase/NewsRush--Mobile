@@ -6,12 +6,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert } from '../components/CustomAlert';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import {
   useAudioRecorder,
@@ -31,7 +31,6 @@ import {
   Check,
   Pencil,
   RotateCcw,
-  Languages,
 } from 'lucide-react-native';
 import { Colors } from '../constants/colors';
 import { saveSection, validateEdition } from '../api/editions';
@@ -81,7 +80,10 @@ export default function SectionEditorScreen() {
   const [status, setStatus] = useState<'draft' | 'completed'>(
     initialStatus === 'completed' || (initialTitle && initialContent) ? 'completed' : 'draft'
   );
-  const [language, setLanguage] = useState<AiLanguage>('english');
+  const editionLanguage: AiLanguage =
+    ((route.params as any)?.language || 'malayalam').toLowerCase() === 'english'
+      ? 'english'
+      : 'malayalam';
 
   const [saving, setSaving] = useState(false);
   const [aiLoadingH, setAiLoadingH] = useState(false);
@@ -152,7 +154,7 @@ export default function SectionEditorScreen() {
     setNotice('');
     setAiLoadingH(true);
     try {
-      const res = await generateHeadline({ content: body.trim(), language });
+      const res = await generateHeadline({ content: body.trim(), language: editionLanguage });
       if (res?.headline) {
         setHeadline(res.headline);
       }
@@ -174,7 +176,7 @@ export default function SectionEditorScreen() {
       const res = await expandContent({
         summary: body.trim(),
         character_limit: charLimit,
-        language,
+        language: editionLanguage,
       });
       if (res?.expanded_content) {
         setBody(res.expanded_content);
@@ -277,7 +279,7 @@ export default function SectionEditorScreen() {
         audio_b64: b64 || undefined,
         audio_uri: uri,
         mime_type: mimeType,
-        language,
+        language: editionLanguage,
       });
 
       if (result?.transcript) {
@@ -360,52 +362,17 @@ export default function SectionEditorScreen() {
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
         >
-          {/* Language & Section Label Row */}
+          {/* Section Label Header & Input */}
           <View style={styles.metaCard}>
-            <View style={styles.langRow}>
-              <View style={styles.langLabelWrap}>
-                <Languages size={15} color={Colors.brand500} strokeWidth={2} />
-                <Text style={styles.langLabel}>AI & Voice Language</Text>
-              </View>
-              <View style={styles.langToggleGroup}>
-                <TouchableOpacity
-                  style={[
-                    styles.langPill,
-                    language === 'english' && styles.langPillActive,
-                  ]}
-                  onPress={() => setLanguage('english')}
-                >
-                  <Text
-                    style={[
-                      styles.langPillText,
-                      language === 'english' && styles.langPillTextActive,
-                    ]}
-                  >
-                    English
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.langPill,
-                    language === 'malayalam' && styles.langPillActive,
-                  ]}
-                  onPress={() => setLanguage('malayalam')}
-                >
-                  <Text
-                    style={[
-                      styles.langPillText,
-                      language === 'malayalam' && styles.langPillTextActive,
-                    ]}
-                  >
-                    മലയാളം
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Custom Section Label Input */}
             <View style={styles.sectionLabelHeader}>
-              <Text style={styles.smallLabel}>Section label</Text>
+              <View style={styles.sectionLabelTitleRow}>
+                <Text style={styles.smallLabel}>Section label</Text>
+                <View style={styles.langBadgePill}>
+                  <Text style={styles.langBadgePillText}>
+                    {editionLanguage === 'malayalam' ? 'മലയാളം' : 'English'}
+                  </Text>
+                </View>
+              </View>
               {nameIsCustom && !isReadOnly && (
                 <TouchableOpacity
                   style={styles.resetNameBtn}
@@ -488,7 +455,7 @@ export default function SectionEditorScreen() {
             <TextInput
               style={[styles.bodyInput, isReadOnly && styles.readOnly]}
               placeholder={
-                language === 'malayalam'
+                editionLanguage === 'malayalam'
                   ? 'വാർത്തയുടെ കുറിപ്പുകൾ എഴുതുക അല്ലെങ്കിൽ താഴെയുള്ള മൈക്ക് അമർത്തി സംസാരിക്കുക...'
                   : 'Type section body or bullet points, or record voice below...'
               }
@@ -522,7 +489,7 @@ export default function SectionEditorScreen() {
                     })}
                   </View>
                   <Text style={styles.recordingLangHint}>
-                    {language === 'malayalam' ? 'ML' : 'EN'}
+                    {editionLanguage === 'malayalam' ? 'ML' : 'EN'}
                   </Text>
                 </View>
 
@@ -550,7 +517,7 @@ export default function SectionEditorScreen() {
               <View style={styles.transcribingBar}>
                 <ActivityIndicator size="small" color={Colors.brand500} />
                 <Text style={styles.transcribingText}>
-                  Transcribing {language === 'malayalam' ? 'Malayalam' : 'English'} audio with AI…
+                  Transcribing {editionLanguage === 'malayalam' ? 'Malayalam' : 'English'} audio with AI…
                 </Text>
               </View>
             )}
@@ -701,48 +668,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  langRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-    paddingBottom: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  langLabelWrap: {
+  sectionLabelTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
-  langLabel: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: Colors.ink,
-  },
-  langToggleGroup: {
-    flexDirection: 'row',
-    backgroundColor: Colors.navy50,
-    borderRadius: 8,
-    padding: 2,
-    gap: 2,
-  },
-  langPill: {
+  langBadgePill: {
+    backgroundColor: Colors.brand50,
+    borderWidth: 1,
+    borderColor: Colors.brand100,
     borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
-  langPillActive: {
-    backgroundColor: Colors.brand500,
-  },
-  langPillText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: Colors.muted,
-  },
-  langPillTextActive: {
-    color: '#ffffff',
+  langBadgePillText: {
+    fontSize: 10.5,
     fontWeight: '700',
+    color: Colors.brand600,
+    letterSpacing: 0.2,
   },
   sectionLabelHeader: {
     flexDirection: 'row',

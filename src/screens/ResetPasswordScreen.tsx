@@ -33,7 +33,7 @@ export default function ResetPasswordScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
 
-  const [token, setToken] = useState(route.params?.token || '');
+  const token = route.params?.token?.trim() || '';
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -42,21 +42,10 @@ export default function ResetPasswordScreen() {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
 
-  const handleTokenInput = (val: string) => {
-    // If user pastes a full reset URL, automatically extract ?token=...
-    const match = val.match(/[?&]token=([^&#\s]+)/);
-    if (match) {
-      setToken(decodeURIComponent(match[1]));
-    } else {
-      setToken(val);
-    }
-    if (error) setError('');
-  };
-
   const handleSubmit = async () => {
     setError('');
-    if (!token.trim()) {
-      setError('Please enter the reset token from your reset link.');
+    if (!token) {
+      setError('Password reset token is missing or invalid. Please request a new link.');
       return;
     }
     if (password.length < 8) {
@@ -70,7 +59,7 @@ export default function ResetPasswordScreen() {
 
     setSubmitting(true);
     try {
-      await resetPassword({ token: token.trim(), new_password: password });
+      await resetPassword({ token, new_password: password });
       setDone(true);
     } catch (err: any) {
       setError(err.message || 'Could not reset password.');
@@ -104,6 +93,42 @@ export default function ResetPasswordScreen() {
     );
   }
 
+  if (!token) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.backLink}>
+            <ChevronLeft size={16} color={Colors.brand500} strokeWidth={2.2} />
+            <Text style={styles.backText}>Back to login</Text>
+          </TouchableOpacity>
+
+          <View style={styles.formCard}>
+            <View style={styles.missingIconCircle}>
+              <KeyRound size={26} color={Colors.brand500} strokeWidth={2} />
+            </View>
+            <Text style={styles.missingTitle}>Reset link required</Text>
+            <Text style={styles.missingSubtitle}>
+              To set a new password, please use the reset link sent to your email address.
+            </Text>
+            <TouchableOpacity
+              style={styles.submitBtn}
+              onPress={() => navigation.navigate('ForgotPassword')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.submitBtnText}>Request a reset link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.loginLinkWrap}
+              onPress={() => navigation.navigate('Login')}
+            >
+              <Text style={styles.loginLinkText}>Back to login</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -124,28 +149,11 @@ export default function ResetPasswordScreen() {
           <View style={styles.heroSection}>
             <Text style={styles.heroTitle}>Choose a new password</Text>
             <Text style={styles.heroBody}>
-              Reset links expire in 30 minutes, so use your token promptly.
+              Enter at least 8 characters for your new password.
             </Text>
           </View>
 
           <View style={styles.formCard}>
-            <Text style={styles.label}>Reset token</Text>
-            <View style={[styles.inputBox, { marginBottom: 4 }]}>
-              <KeyRound size={15} color={Colors.muted} strokeWidth={1.8} />
-              <TextInput
-                style={styles.input}
-                placeholder="Paste the token or reset link"
-                placeholderTextColor={Colors.textMuted}
-                value={token}
-                onChangeText={handleTokenInput}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-            <Text style={styles.hintText}>
-              Filled in automatically when opened from the reset screen, or paste the link/token.
-            </Text>
-
             <Text style={styles.label}>New password</Text>
             <View style={styles.inputBox}>
               <Lock size={15} color={Colors.muted} strokeWidth={1.8} />
@@ -287,11 +295,31 @@ const styles = StyleSheet.create({
     color: Colors.ink,
     paddingVertical: 0,
   },
-  hintText: {
-    fontSize: 11.5,
+  missingIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.brand50,
+    borderWidth: 1,
+    borderColor: Colors.brand100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  missingTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.navy900,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  missingSubtitle: {
+    fontSize: 13,
     color: Colors.muted,
-    marginBottom: 12,
-    lineHeight: 16,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 18,
   },
   eyeBtn: { padding: 4 },
   errorBox: {

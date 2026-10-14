@@ -6,12 +6,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert } from '../components/CustomAlert';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Camera,
@@ -23,7 +23,6 @@ import {
   Calendar,
   Phone,
   Mail,
-  ShieldCheck,
   CheckCircle2,
   AlertCircle,
   Pencil,
@@ -198,26 +197,9 @@ export default function ProfileScreen() {
               </TouchableOpacity>
 
               <View style={styles.identityInfo}>
-                <View style={styles.nameRoleRow}>
-                  <Text style={styles.userName} numberOfLines={1}>
-                    {displayName}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={handlePhotoOptions}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={styles.nameEditPenBtn}
-                  >
-                    <Pencil size={13} color={Colors.muted} strokeWidth={2} />
-                  </TouchableOpacity>
-                  {user?.is_system_user ? (
-                    <View style={[styles.roleBadge, styles.roleBadgeAdmin]}>
-                      <ShieldCheck size={11} color="#ffffff" strokeWidth={2} />
-                      <Text style={[styles.roleBadgeText, { color: '#ffffff' }]}>
-                        System Admin
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
+                <Text style={styles.userName} numberOfLines={1}>
+                  {displayName}
+                </Text>
 
                 <Text style={styles.userEmail} numberOfLines={1}>
                   {user?.email}
@@ -469,39 +451,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  nameRoleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
   userName: {
     fontSize: 16,
     fontWeight: '800',
     color: Colors.navy900,
-  },
-  nameEditPenBtn: {
-    padding: 3,
-  },
-  roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-  },
-  roleBadgeAdmin: {
-    backgroundColor: Colors.navy900,
-  },
-  roleBadgeEditor: {
-    backgroundColor: Colors.brand50,
-    borderWidth: 1,
-    borderColor: Colors.brand100,
-  },
-  roleBadgeText: {
-    fontSize: 10.5,
-    fontWeight: '700',
   },
   userEmail: {
     fontSize: 12.5,

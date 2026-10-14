@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
+  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Alert } from '../components/CustomAlert';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -27,7 +28,6 @@ import { Colors } from '../constants/colors';
 import { Edition, Section, ValidationResponse, AiLanguage } from '../types';
 import { getEdition, updateEditionStatus, validateEdition, saveSection } from '../api/editions';
 import { expandContent } from '../api/ai';
-import StatusBadge from '../components/StatusBadge';
 import TemplateThumb from '../components/TemplateThumb';
 import { buildPage, templatesForPage, DEFAULT_TEMPLATE } from '../data/templates';
 import { readTemplates, writeTemplate } from '../lib/templateStore';
@@ -46,6 +46,7 @@ const PAGE_NAMES = [
 const UNDERFILL_RATIO = 0.6;
 
 export default function EditorScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { editionId } = route.params;
@@ -56,7 +57,6 @@ export default function EditorScreen() {
   const [checkingReadiness, setCheckingReadiness] = useState(false);
   const [validation, setValidation] = useState<ValidationResponse | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [fillLang, setFillLang] = useState<AiLanguage>('english');
   const [fillState, setFillState] = useState<{ running: boolean; done: number; total: number }>({
     running: false,
     done: 0,
@@ -152,6 +152,9 @@ export default function EditorScreen() {
     }
   };
 
+  const editionLanguage: AiLanguage =
+    (edition?.language || 'malayalam').toLowerCase() === 'english' ? 'english' : 'malayalam';
+
   const handleFillThinSections = async () => {
     if (fillState.running) {
       cancelFillRef.current = true;
@@ -172,7 +175,7 @@ export default function EditorScreen() {
         const res = await expandContent({
           summary: saved.content,
           character_limit: candidate.charLimit,
-          language: fillLang,
+          language: editionLanguage,
         });
         await saveSection(editionId, {
           page_number: candidate.page_number || 1,
@@ -238,10 +241,8 @@ export default function EditorScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Compact Toolbar: Status + Bulk Fill + Check Readiness */}
+      {/* Compact Toolbar: Actions */}
       <View style={styles.statusBar}>
-        <StatusBadge status={edition?.status || 'draft'} />
-
         <View style={styles.toolbarActions}>
           {(underFilledBlocks.length > 0 || fillState.running) && (
             <TouchableOpacity
@@ -354,6 +355,7 @@ export default function EditorScreen() {
                         initialContent: saved?.content || '',
                         initialStatus: saved?.status || 'draft',
                         editionStatus: (edition?.status || 'draft') as any,
+                        language: editionLanguage,
                       });
                     }}
                   >
@@ -412,7 +414,12 @@ export default function EditorScreen() {
       </View>
 
       {/* Main Scroll Content */}
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: Math.max(insets.bottom + 16, Platform.OS === 'android' ? 44 : 24) },
+        ]}
+      >
         {/* Collapsible Template Bar */}
         <View style={styles.templateSection}>
           <TouchableOpacity
@@ -496,6 +503,7 @@ export default function EditorScreen() {
                   initialStatus: saved?.status || 'draft',
                   sectionIndex: idx,
                   editionStatus: (edition?.status || 'draft') as any,
+                  language: editionLanguage,
                 })
               }
               activeOpacity={0.8}
@@ -509,18 +517,6 @@ export default function EditorScreen() {
                     {currentChars}/{block.charLimit} chars ({fillPercent}%) · {block.size.toUpperCase()}
                   </Text>
                 </View>
-
-                <View style={[styles.statusTag, isDone ? styles.doneTag : styles.draftTag]}>
-                  {isDone && <Check size={11} color={Colors.success} strokeWidth={2.5} />}
-                  <Text
-                    style={[
-                      styles.statusTagText,
-                      isDone ? styles.doneTagText : styles.draftTagText,
-                    ]}
-                  >
-                    {isDone ? 'Complete' : 'Draft'}
-                  </Text>
-                </View>
               </View>
 
               <Text
@@ -530,9 +526,11 @@ export default function EditorScreen() {
                 {headline || 'Untitled article — tap to write or dictate'}
               </Text>
 
-              <Text style={styles.sectionBody} numberOfLines={2}>
-                {body || 'No body copy yet. Tap to dictate with voice or expand with AI.'}
-              </Text>
+              {body ? (
+                <Text style={styles.sectionBody} numberOfLines={2}>
+                  {body}
+                </Text>
+              ) : null}
 
               <View style={styles.cardFooter}>
                 <View style={styles.miniProgressTrack}>
@@ -593,11 +591,11 @@ const styles = StyleSheet.create({
   printHeaderText: { color: '#ffffff', fontSize: 12.5, fontWeight: '700' },
   statusBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     backgroundColor: '#ffffff',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },

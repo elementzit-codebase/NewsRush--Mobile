@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
 import { Colors } from '../constants/colors';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -9,11 +9,11 @@ const STATUS_LABELS: Record<string, string> = {
   completed: 'Completed',
 };
 
-const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  completed: { bg: Colors.successLight, text: Colors.success, border: Colors.successBorder },
-  ready: { bg: Colors.brand500, text: '#ffffff', border: Colors.brand500 },
-  in_progress: { bg: Colors.brand50, text: Colors.brand600, border: Colors.brand100 },
-  draft: { bg: '#ffffff', text: Colors.muted, border: Colors.line },
+const STATUS_COLORS: Record<string, string> = {
+  completed: '#059669',
+  ready: Colors.brand600,
+  in_progress: '#d97706',
+  draft: Colors.muted,
 };
 
 interface Props {
@@ -21,28 +21,21 @@ interface Props {
 }
 
 export default function StatusBadge({ status }: Props) {
-  const current = STATUS_STYLES[status] || STATUS_STYLES.draft;
+  const color = STATUS_COLORS[status] || STATUS_COLORS.draft;
   const label = STATUS_LABELS[status] || status;
 
   return (
-    <View style={[styles.badge, { backgroundColor: current.bg, borderColor: current.border }]}>
-      <Text style={[styles.text, { color: current.text }]}>
-        {label}
-      </Text>
-    </View>
+    <Text style={[styles.text, { color }]}>
+      {label}
+    </Text>
   );
 }
 
 const styles = StyleSheet.create({
-  badge: {
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    alignSelf: 'flex-start',
-  },
   text: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 12.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });
+

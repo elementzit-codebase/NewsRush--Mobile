@@ -82,51 +82,57 @@ export default function ForgotPasswordScreen() {
 
           {result ? (
             <View style={styles.resultCard}>
-              <View style={styles.expiryRow}>
-                <CheckCircle2 size={16} color={Colors.success} strokeWidth={2} />
-                <Text style={styles.resultText}>
-                  The link expires in {result.expires_in_minutes || 30} minutes.
-                </Text>
+              <View style={styles.emailIconCircle}>
+                <Mail size={28} color={Colors.brand500} strokeWidth={2} />
+              </View>
+
+              <Text style={styles.resultHeader}>Check your inbox</Text>
+              <Text style={styles.resultBody}>
+                We've sent a password reset link to:
+              </Text>
+              <View style={styles.emailPill}>
+                <Text style={styles.emailPillText}>{result.to_email || email}</Text>
+              </View>
+
+              <View style={styles.instructionBox}>
+                <View style={styles.instructionRow}>
+                  <CheckCircle2 size={15} color={Colors.brand500} strokeWidth={2} style={{ marginTop: 2 }} />
+                  <Text style={styles.instructionText}>
+                    Tap the link in your email to choose a new password.
+                  </Text>
+                </View>
+                <View style={styles.instructionRow}>
+                  <AlertCircle size={15} color={Colors.muted} strokeWidth={2} style={{ marginTop: 2 }} />
+                  <Text style={styles.instructionText}>
+                    If you don't see it within a few minutes, check your spam or junk folder.
+                  </Text>
+                </View>
               </View>
 
               {result.reset_url ? (
-                <View style={styles.urlBox}>
-                  <Text style={styles.urlLabel}>Reset link</Text>
-                  <Text style={styles.urlHint}>
-                    Shown here because the server returned it directly — tap below to reset your password now.
-                  </Text>
-                  <Text style={styles.urlText} selectable numberOfLines={2}>
-                    {result.reset_url}
+                <View style={styles.devCard}>
+                  <Text style={styles.devCardLabel}>Development Mode</Text>
+                  <Text style={styles.devCardBody}>
+                    Email delivery is not configured on this server. Tap below to continue directly:
                   </Text>
                   <TouchableOpacity
-                    style={styles.resetNowBtn}
-                    onPress={() =>
-                      navigation.navigate('ResetPassword', { token: extractedToken })
-                    }
+                    style={styles.devResetBtn}
+                    onPress={() => navigation.navigate('ResetPassword', { token: extractedToken })}
                     activeOpacity={0.85}
                   >
                     <KeyRound size={15} color="#ffffff" strokeWidth={2} />
-                    <Text style={styles.resetNowBtnText}>Reset password now</Text>
+                    <Text style={styles.devResetBtnText}>Continue to password reset</Text>
                     <ArrowRight size={15} color="#ffffff" strokeWidth={2} />
                   </TouchableOpacity>
                 </View>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.resetNowBtn, { marginBottom: 12 }]}
-                  onPress={() => navigation.navigate('ResetPassword', { token: '' })}
-                  activeOpacity={0.85}
-                >
-                  <KeyRound size={15} color="#ffffff" strokeWidth={2} />
-                  <Text style={styles.resetNowBtnText}>Enter reset token</Text>
-                  <ArrowRight size={15} color="#ffffff" strokeWidth={2} />
-                </TouchableOpacity>
-              )}
+              ) : null}
 
               <TouchableOpacity
-                style={styles.secondaryBtn}
+                style={styles.backToLoginBtn}
                 onPress={() => navigation.navigate('Login')}
+                activeOpacity={0.85}
               >
-                <Text style={styles.secondaryBtnText}>Back to login</Text>
+                <Text style={styles.backToLoginBtnText}>Back to login</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -170,10 +176,10 @@ export default function ForgotPasswordScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.haveTokenLink}
-                onPress={() => navigation.navigate('ResetPassword', { token: '' })}
+                style={styles.cancelLink}
+                onPress={() => navigation.navigate('Login')}
               >
-                <Text style={styles.haveTokenText}>Already have a reset token? Enter it here</Text>
+                <Text style={styles.cancelLinkText}>Return to login</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -259,68 +265,135 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   submitBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
-  haveTokenLink: {
+  cancelLink: {
     marginTop: 14,
     alignItems: 'center',
   },
-  haveTokenText: {
+  cancelLinkText: {
     fontSize: 12.5,
     fontWeight: '600',
-    color: Colors.brand500,
+    color: Colors.muted,
   },
   resultCard: {
     backgroundColor: '#ffffff',
     borderRadius: 14,
-    padding: 16,
+    padding: 20,
     borderWidth: 1,
     borderColor: Colors.border,
-  },
-  expiryRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    shadowColor: Colors.shadow,
+    shadowOpacity: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  emailIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.brand50,
+    borderWidth: 1,
+    borderColor: Colors.brand100,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 14,
   },
-  resultText: { fontSize: 13, color: Colors.ink, fontWeight: '500', flex: 1 },
-  urlBox: {
+  resultHeader: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: Colors.navy900,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  resultBody: {
+    fontSize: 13,
+    color: Colors.muted,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emailPill: {
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+  },
+  emailPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.ink,
+  },
+  instructionBox: {
+    width: '100%',
+    backgroundColor: Colors.surface,
+    borderRadius: 10,
+    padding: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 18,
+  },
+  instructionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  instructionText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.ink,
+    lineHeight: 17,
+  },
+  devCard: {
+    width: '100%',
     backgroundColor: Colors.warningLight,
     borderWidth: 1,
     borderColor: Colors.warningBorder,
     borderRadius: 10,
     padding: 12,
-    marginBottom: 14,
+    marginBottom: 16,
   },
-  urlLabel: { fontSize: 12.5, fontWeight: '700', color: '#78350f', marginBottom: 2 },
-  urlHint: { fontSize: 11.5, color: '#92400e', lineHeight: 16, marginBottom: 8 },
-  urlText: {
+  devCardLabel: {
     fontSize: 11.5,
-    color: Colors.brand600,
-    marginBottom: 10,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontWeight: '700',
+    color: '#78350f',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 3,
   },
-  resetNowBtn: {
+  devCardBody: {
+    fontSize: 12,
+    color: '#92400e',
+    lineHeight: 16,
+    marginBottom: 10,
+  },
+  devResetBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     backgroundColor: Colors.brand500,
-    borderRadius: 9,
-    height: 40,
+    borderRadius: 8,
+    height: 38,
   },
-  resetNowBtnText: {
+  devResetBtnText: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
   },
-  secondaryBtn: {
+  backToLoginBtn: {
+    width: '100%',
     borderRadius: 10,
     borderWidth: 1,
     borderColor: Colors.border,
     height: 42,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#ffffff',
   },
-  secondaryBtnText: {
+  backToLoginBtnText: {
     color: Colors.ink,
     fontSize: 13.5,
     fontWeight: '600',
