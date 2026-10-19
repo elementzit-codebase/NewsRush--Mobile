@@ -17,12 +17,14 @@ import { Newspaper, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react-na
 import { Colors } from '../constants/colors';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthStackParamList } from '../navigation';
+import { useKeyboard } from '../lib/useKeyboard';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
 export default function LoginScreen() {
   const navigation = useNavigation<Nav>();
   const { login } = useAuth();
+  const { keyboardVisible } = useKeyboard();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,13 +51,16 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardVisible && styles.scrollContentWithKeyboard,
+          ]}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
           {/* Brand Header */}
           <View style={styles.brandRow}>
@@ -178,6 +183,11 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     flexGrow: 1,
     justifyContent: 'center',
+  },
+  scrollContentWithKeyboard: {
+    justifyContent: 'flex-start',
+    paddingTop: 16,
+    paddingBottom: 60,
   },
   brandRow: {
     flexDirection: 'row',

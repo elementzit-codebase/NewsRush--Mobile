@@ -35,8 +35,13 @@ export type RootStackParamList = {
     initialTitle?: string;
     initialContent?: string;
     initialStatus?: string;
+    initialImageUrl?: string | null;
+    initialImageCaption?: string | null;
+    initialPhotoMode?: 'none' | 'ai' | 'upload';
     editionStatus: EditionStatus;
     language?: string;
+    span?: number;
+    isFirstSection?: boolean;
   };
   PrintEdition: { editionId: string | number };
 };

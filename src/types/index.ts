@@ -24,6 +24,9 @@ export interface Section {
   title?: string | null;
   content?: string | null;
   status?: 'draft' | 'completed' | string;
+  image_url?: string | null;
+  image_caption?: string | null;
+  photoMode?: 'none' | 'ai' | 'upload';
   // UI aliases
   headline?: string;
   body?: string;
@@ -126,6 +129,8 @@ export interface SaveSectionRequest {
   title?: string | null;
   content?: string | null;
   status?: string;
+  image_url?: string | null;
+  image_caption?: string | null;
 }
 
 export type AiLanguage = 'english' | 'malayalam';
@@ -143,12 +148,15 @@ export interface AiExpandRequest {
   summary: string;
   character_limit?: number;
   language?: AiLanguage;
+  include_photo?: boolean;
 }
 
 export interface AiExpandResponse {
   expanded_content: string;
   generated_title?: string;
   body?: string;
+  image_url?: string | null;
+  image_caption?: string | null;
 }
 
 export interface AiTranscribeRequest {

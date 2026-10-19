@@ -7,8 +7,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert } from '../components/CustomAlert';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import {
@@ -43,6 +44,10 @@ const formatDate = (value?: string) =>
 export default function UsersScreen() {
   const navigation = useNavigation<any>();
   const { user: currentUser } = useAuth();
+  const insets = useSafeAreaInsets();
+  const tabBottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 28 : 10);
+  const listBottomPadding = 52 + tabBottomInset + 28;
+
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -268,7 +273,7 @@ export default function UsersScreen() {
               }}
             />
           }
-          contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 20, gap: 8 }}
+          contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: listBottomPadding, gap: 8 }}
           ListEmptyComponent={
             <View style={styles.empty}>
               <View style={styles.emptyIconCircle}>

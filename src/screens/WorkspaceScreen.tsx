@@ -11,8 +11,9 @@ import {
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert } from '../components/CustomAlert';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -22,12 +23,14 @@ import {
   Search,
   X,
   ArrowUpDown,
+  Calendar as CalendarIcon,
 } from 'lucide-react-native';
 import { Colors } from '../constants/colors';
 import { EditionSummary } from '../types';
 import { getEditions, getEdition, createEdition, deleteEdition } from '../api/editions';
 import EditionCard from '../components/EditionCard';
 import Avatar from '../components/Avatar';
+import CalendarDatePickerModal from '../components/CalendarDatePickerModal';
 import { RootStackParamList } from '../navigation';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -36,8 +39,6 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'draft', label: 'Draft' },
-  { key: 'in_progress', label: 'In Progress' },
-  { key: 'ready', label: 'Ready' },
   { key: 'completed', label: 'Completed' },
 ];
 
@@ -61,8 +62,13 @@ export default function WorkspaceScreen() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'title'>('latest');
 
+  const insets = useSafeAreaInsets();
+  const tabBottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 28 : 10);
+  const listBottomPadding = 52 + tabBottomInset + 28;
+
   // New Edition Modal
   const [showCreate, setShowCreate] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [editionLabel, setEditionLabel] = useState('Morning Edition');
   const [editionDate, setEditionDate] = useState(new Date().toISOString().split('T')[0]);
   const [language, setLanguage] = useState<'malayalam' | 'english'>('malayalam');
@@ -129,12 +135,16 @@ export default function WorkspaceScreen() {
       Alert.alert('Error', 'Please enter an Edition Label');
       return;
     }
+    if (!editionDate || !/^\d{4}-\d{2}-\d{2}$/.test(editionDate)) {
+      Alert.alert('Error', 'Please select a valid publication date (YYYY-MM-DD)');
+      return;
+    }
     setCreating(true);
     try {
       const edition = await createEdition({
         newspaper_name: 'NewsRush Daily',
         edition_label: editionLabel.trim(),
-        date: editionDate || new Date().toISOString().split('T')[0],
+        date: editionDate,
         language,
       });
       setShowCreate(false);
@@ -168,8 +178,6 @@ export default function WorkspaceScreen() {
 
   const statusCounts = useMemo(() => ({
     draft: editions.filter(e => e.status === 'draft').length,
-    in_progress: editions.filter(e => e.status === 'in_progress').length,
-    ready: editions.filter(e => e.status === 'ready').length,
     completed: editions.filter(e => e.status === 'completed').length,
   }), [editions]);
 
@@ -178,10 +186,6 @@ export default function WorkspaceScreen() {
     switch (filterStatus) {
       case 'draft':
         return '0 drafts';
-      case 'in_progress':
-        return '0 in progress';
-      case 'ready':
-        return '0 ready';
       case 'completed':
         return '0 completed';
       default:
@@ -289,7 +293,7 @@ export default function WorkspaceScreen() {
               }}
             />
           }
-          contentContainerStyle={{ paddingBottom: 20, paddingTop: 4 }}
+          contentContainerStyle={{ paddingBottom: listBottomPadding, paddingTop: 4 }}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyLabel}>{getEmptyLabel()}</Text>
@@ -308,93 +312,127 @@ export default function WorkspaceScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Edition</Text>
-              <TouchableOpacity
-                onPress={() => setShowCreate(false)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={styles.modalCloseBtn}
-              >
-                <X size={18} color={Colors.muted} strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.modalLabel}>Publication Date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={Colors.textMuted}
-              value={editionDate}
-              onChangeText={setEditionDate}
-            />
-
-            <Text style={styles.modalLabel}>Edition Label</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Morning Edition, Evening"
-              placeholderTextColor={Colors.textMuted}
-              value={editionLabel}
-              onChangeText={setEditionLabel}
-            />
-
-            <Text style={styles.modalLabel}>Language</Text>
-            <View style={styles.langToggleBox}>
-              <TouchableOpacity
-                style={[
-                  styles.langOptionBtn,
-                  language === 'malayalam' && styles.langOptionBtnActive,
-                ]}
-                onPress={() => setLanguage('malayalam')}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.langOptionText,
-                    language === 'malayalam' && styles.langOptionTextActive,
-                  ]}
+          <ScrollView
+            contentContainerStyle={styles.modalScrollWrap}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>New Edition</Text>
+                <TouchableOpacity
+                  onPress={() => setShowCreate(false)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={styles.modalCloseBtn}
                 >
-                  മലയാളം
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.langOptionBtn,
-                  language === 'english' && styles.langOptionBtnActive,
-                ]}
-                onPress={() => setLanguage('english')}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.langOptionText,
-                    language === 'english' && styles.langOptionTextActive,
-                  ]}
-                >
-                  English
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <X size={18} color={Colors.muted} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowCreate(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
+              <Text style={styles.modalLabel}>Publication Date</Text>
               <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={handleCreate}
-                disabled={creating}
+                style={styles.datePickerTrigger}
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Choose Publication Date"
               >
-                {creating ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
-                ) : (
-                  <Text style={styles.confirmText}>Create Edition</Text>
-                )}
+                <View style={styles.datePickerTriggerLeft}>
+                  <View style={styles.dateIconCircle}>
+                    <CalendarIcon size={16} color={Colors.brand600} strokeWidth={2.2} />
+                  </View>
+                  <View>
+                    <Text style={styles.datePickerValueText}>{editionDate}</Text>
+                    <Text style={styles.datePickerSubText}>
+                      {new Date(`${editionDate}T00:00:00`).toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.dateChangeBadge}>
+                  <Text style={styles.dateChangeBadgeText}>Change</Text>
+                </View>
               </TouchableOpacity>
+
+              <Text style={styles.modalLabel}>Edition Label</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Morning Edition, Evening"
+                placeholderTextColor={Colors.textMuted}
+                value={editionLabel}
+                onChangeText={setEditionLabel}
+              />
+
+              <Text style={styles.modalLabel}>Language</Text>
+              <View style={styles.langToggleBox}>
+                <TouchableOpacity
+                  style={[
+                    styles.langOptionBtn,
+                    language === 'malayalam' && styles.langOptionBtnActive,
+                  ]}
+                  onPress={() => setLanguage('malayalam')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.langOptionText,
+                      language === 'malayalam' && styles.langOptionTextActive,
+                    ]}
+                  >
+                    മലയാളം
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.langOptionBtn,
+                    language === 'english' && styles.langOptionBtnActive,
+                  ]}
+                  onPress={() => setLanguage('english')}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.langOptionText,
+                      language === 'english' && styles.langOptionTextActive,
+                    ]}
+                  >
+                    English
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowCreate(false)}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmBtn}
+                  onPress={handleCreate}
+                  disabled={creating}
+                >
+                  {creating ? (
+                    <ActivityIndicator color="#ffffff" size="small" />
+                  ) : (
+                    <Text style={styles.confirmText}>Create Edition</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Interactive Calendar Date Picker Modal */}
+      <CalendarDatePickerModal
+        visible={showDatePicker}
+        value={editionDate}
+        onSelect={selected => setEditionDate(selected)}
+        onClose={() => setShowDatePicker(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -525,6 +563,9 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: Colors.overlay,
+  },
+  modalScrollWrap: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 18,
   },
@@ -544,6 +585,57 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 16, fontWeight: '800', color: Colors.navy900 },
   modalCloseBtn: { padding: 4 },
   modalLabel: { fontSize: 12, fontWeight: '600', color: Colors.ink, marginBottom: 4 },
+  datePickerTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 9,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    backgroundColor: '#ffffff',
+    marginBottom: 12,
+  },
+  datePickerTriggerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  dateIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: Colors.brand50,
+    borderWidth: 1,
+    borderColor: Colors.brand100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  datePickerValueText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: Colors.ink,
+  },
+  datePickerSubText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: Colors.muted,
+    marginTop: 0.5,
+  },
+  dateChangeBadge: {
+    backgroundColor: Colors.canvas,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  dateChangeBadgeText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: Colors.brand600,
+  },
   modalInput: {
     borderWidth: 1,
     borderColor: Colors.border,

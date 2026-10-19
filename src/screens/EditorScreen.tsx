@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Alert } from '../components/CustomAlert';
@@ -23,11 +24,15 @@ import {
   ChevronUp,
   Info,
   X,
+  Languages,
+  Image as ImageIcon,
 } from 'lucide-react-native';
 import { Colors } from '../constants/colors';
+import { normalizeImageUrl } from '../constants/api';
 import { Edition, Section, ValidationResponse, AiLanguage } from '../types';
-import { getEdition, updateEditionStatus, validateEdition, saveSection } from '../api/editions';
+import { getEdition, updateEdition, updateEditionStatus, validateEdition, saveSection } from '../api/editions';
 import { expandContent } from '../api/ai';
+import { cleanSectionContent, cleanSectionTitle } from '../lib/contentSanitizer';
 import TemplateThumb from '../components/TemplateThumb';
 import { buildPage, templatesForPage, DEFAULT_TEMPLATE } from '../data/templates';
 import { readTemplates, writeTemplate } from '../lib/templateStore';
@@ -155,6 +160,16 @@ export default function EditorScreen() {
   const editionLanguage: AiLanguage =
     (edition?.language || 'malayalam').toLowerCase() === 'english' ? 'english' : 'malayalam';
 
+  const handleToggleLanguage = async () => {
+    const nextLang: AiLanguage = editionLanguage === 'malayalam' ? 'english' : 'malayalam';
+    try {
+      await updateEdition(editionId, { language: nextLang });
+      setEdition(prev => (prev ? { ...prev, language: nextLang } : prev));
+    } catch {
+      setEdition(prev => (prev ? { ...prev, language: nextLang } : prev));
+    }
+  };
+
   const handleFillThinSections = async () => {
     if (fillState.running) {
       cancelFillRef.current = true;
@@ -243,6 +258,17 @@ export default function EditorScreen() {
 
       {/* Compact Toolbar: Actions */}
       <View style={styles.statusBar}>
+        <TouchableOpacity
+          style={styles.langTogglePill}
+          onPress={handleToggleLanguage}
+          activeOpacity={0.75}
+        >
+          <Languages size={13} color={Colors.brand600} strokeWidth={2} />
+          <Text style={styles.langToggleText}>
+            {editionLanguage === 'malayalam' ? 'മലയാളം' : 'English'}
+          </Text>
+        </TouchableOpacity>
+
         <View style={styles.toolbarActions}>
           {(underFilledBlocks.length > 0 || fillState.running) && (
             <TouchableOpacity
@@ -354,8 +380,13 @@ export default function EditorScreen() {
                         initialTitle: saved?.title || '',
                         initialContent: saved?.content || '',
                         initialStatus: saved?.status || 'draft',
+                        initialImageUrl: saved?.image_url || null,
+                        initialImageCaption: saved?.image_caption || null,
+                        initialPhotoMode: saved?.image_url ? 'upload' : 'none',
                         editionStatus: (edition?.status || 'draft') as any,
                         language: editionLanguage,
+                        span: blk?.span || 2,
+                        isFirstSection: pageDef?.blocks[0]?.section_key === sec.section_key,
                       });
                     }}
                   >
@@ -480,8 +511,9 @@ export default function EditorScreen() {
         {builtPage.blocks.map((block, idx) => {
           const saved = savedSectionsMap.get(block.section_key);
           const customLabel = saved?.section_name?.trim() || block.section_name;
-          const headline = saved?.title || '';
-          const body = saved?.content || '';
+          const headline = cleanSectionTitle(saved?.title, saved?.content || '');
+          const body = cleanSectionContent(saved?.content);
+          const hasPhoto = Boolean(saved?.image_url);
           const isDone = completedKeySet.has(block.section_key);
           const currentChars = body.length;
           const fillPercent = Math.min(100, Math.round((currentChars / block.charLimit) * 100));
@@ -501,36 +533,61 @@ export default function EditorScreen() {
                   initialTitle: headline,
                   initialContent: body,
                   initialStatus: saved?.status || 'draft',
+                  initialImageUrl: saved?.image_url || null,
+                  initialImageCaption: saved?.image_caption || null,
+                  initialPhotoMode: saved?.image_url ? 'upload' : 'none',
                   sectionIndex: idx,
                   editionStatus: (edition?.status || 'draft') as any,
                   language: editionLanguage,
+                  span: block.span,
+                  isFirstSection: idx === 0,
                 })
               }
               activeOpacity={0.8}
             >
               <View style={styles.cardHeader}>
                 <View style={styles.blockInfo}>
-                  <Text style={styles.blockName} numberOfLines={1}>
-                    {customLabel}
-                  </Text>
+                  <View style={styles.blockNameRow}>
+                    <Text style={styles.blockName} numberOfLines={1}>
+                      {customLabel}
+                    </Text>
+                    {hasPhoto && (
+                      <View style={styles.photoPill}>
+                        <ImageIcon size={10} color={Colors.brand600} strokeWidth={2} />
+                        <Text style={styles.photoPillText}>Photo</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.capacityText}>
                     {currentChars}/{block.charLimit} chars ({fillPercent}%) · {block.size.toUpperCase()}
                   </Text>
                 </View>
               </View>
 
-              <Text
-                style={[styles.sectionHeadline, !headline && styles.placeholderHeadline]}
-                numberOfLines={1}
-              >
-                {headline || 'Untitled article — tap to write or dictate'}
-              </Text>
+              <View style={styles.cardContentRow}>
+                {hasPhoto && (
+                  <Image
+                    source={{ uri: normalizeImageUrl(saved?.image_url) }}
+                    style={styles.cardThumb}
+                    resizeMode="cover"
+                    onError={(e) => console.warn('Editor card image load error:', e.nativeEvent.error)}
+                  />
+                )}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={[styles.sectionHeadline, !headline && styles.placeholderHeadline]}
+                    numberOfLines={1}
+                  >
+                    {headline || 'Untitled article — tap to write or dictate'}
+                  </Text>
 
-              {body ? (
-                <Text style={styles.sectionBody} numberOfLines={2}>
-                  {body}
-                </Text>
-              ) : null}
+                  {body ? (
+                    <Text style={styles.sectionBody} numberOfLines={2}>
+                      {body}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
 
               <View style={styles.cardFooter}>
                 <View style={styles.miniProgressTrack}>
@@ -591,13 +648,29 @@ const styles = StyleSheet.create({
   printHeaderText: { color: '#ffffff', fontSize: 12.5, fontWeight: '700' },
   statusBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#ffffff',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+  },
+  langTogglePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.brand50,
+    borderWidth: 1,
+    borderColor: Colors.brand100,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4.5,
+  },
+  langToggleText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: Colors.brand600,
   },
   toolbarActions: {
     flexDirection: 'row',
@@ -891,4 +964,39 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   editAction: { fontSize: 12, fontWeight: '700', color: Colors.brand500 },
+  blockNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  photoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.brand50,
+    borderWidth: 1,
+    borderColor: Colors.brand100,
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+  },
+  photoPillText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: Colors.brand600,
+  },
+  cardContentRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    marginTop: 3,
+  },
+  cardThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
 });

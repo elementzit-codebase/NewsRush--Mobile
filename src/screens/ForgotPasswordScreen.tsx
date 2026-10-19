@@ -17,6 +17,7 @@ import { ChevronLeft, Mail, KeyRound, ArrowRight, AlertCircle, CheckCircle2 } fr
 import { Colors } from '../constants/colors';
 import { forgotPassword } from '../api/auth';
 import { AuthStackParamList } from '../navigation';
+import { useKeyboard } from '../lib/useKeyboard';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'ForgotPassword'>;
 
@@ -28,6 +29,7 @@ function extractTokenFromUrl(url?: string): string {
 
 export default function ForgotPasswordScreen() {
   const navigation = useNavigation<Nav>();
+  const { keyboardVisible } = useKeyboard();
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -56,13 +58,16 @@ export default function ForgotPasswordScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardVisible && styles.scrollContentWithKeyboard,
+          ]}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
             <ChevronLeft size={16} color={Colors.brand500} strokeWidth={2.2} />
@@ -196,6 +201,11 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     flexGrow: 1,
     justifyContent: 'center',
+  },
+  scrollContentWithKeyboard: {
+    justifyContent: 'flex-start',
+    paddingTop: 16,
+    paddingBottom: 60,
   },
   backLink: {
     flexDirection: 'row',

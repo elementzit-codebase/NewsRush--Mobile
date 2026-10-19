@@ -36,6 +36,7 @@ export const createEdition = (data: CreateEditionRequest): Promise<Edition> => {
     newspaper_name: data.newspaper_name || data.title || 'NewsRush',
     date: data.date,
     edition_label: data.edition_label || 'Morning Edition',
+    language: data.language || 'malayalam',
     status: data.status || 'draft',
   };
   return post<Edition>(ENDPOINTS.editions.create, payload);

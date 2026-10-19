@@ -1,5 +1,20 @@
-export const SERVER_ORIGIN = 'https://www.newsrush.elementzit.com';
+//Live server
+// export const SERVER_ORIGIN = 'https://www.newsrush.elementzit.com';
+
+//Local server
+export const SERVER_ORIGIN = 'http://192.168.1.49:8000';
+
 export const API_BASE_URL = `${SERVER_ORIGIN}/api`;
+
+export function normalizeImageUrl(url?: string | null): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+    return `${SERVER_ORIGIN}${trimmed}`;
+  }
+  return trimmed;
+}
 
 export const ENDPOINTS = {
   auth: {

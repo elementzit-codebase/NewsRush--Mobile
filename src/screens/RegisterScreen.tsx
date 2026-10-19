@@ -27,11 +27,13 @@ import {
 import { Colors } from '../constants/colors';
 import { register } from '../api/auth';
 import { AuthStackParamList } from '../navigation';
+import { useKeyboard } from '../lib/useKeyboard';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'Register'>;
 
 export default function RegisterScreen() {
   const navigation = useNavigation<Nav>();
+  const { keyboardVisible } = useKeyboard();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -109,13 +111,16 @@ export default function RegisterScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardVisible && styles.scrollContentWithKeyboard,
+          ]}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
           {/* Back Link */}
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
@@ -272,6 +277,11 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     flexGrow: 1,
     justifyContent: 'center',
+  },
+  scrollContentWithKeyboard: {
+    justifyContent: 'flex-start',
+    paddingTop: 12,
+    paddingBottom: 60,
   },
   backLink: {
     flexDirection: 'row',

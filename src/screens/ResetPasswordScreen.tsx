@@ -25,6 +25,7 @@ import {
 import { Colors } from '../constants/colors';
 import { resetPassword } from '../api/auth';
 import { AuthStackParamList } from '../navigation';
+import { useKeyboard } from '../lib/useKeyboard';
 
 type Nav = NativeStackNavigationProp<AuthStackParamList, 'ResetPassword'>;
 type Route = RouteProp<AuthStackParamList, 'ResetPassword'>;
@@ -32,6 +33,7 @@ type Route = RouteProp<AuthStackParamList, 'ResetPassword'>;
 export default function ResetPasswordScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const { keyboardVisible } = useKeyboard();
 
   const token = route.params?.token?.trim() || '';
   const [password, setPassword] = useState('');
@@ -133,13 +135,16 @@ export default function ResetPasswordScreen() {
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardVisible && styles.scrollContentWithKeyboard,
+          ]}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
             <ChevronLeft size={16} color={Colors.brand500} strokeWidth={2.2} />
@@ -252,6 +257,11 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     flexGrow: 1,
     justifyContent: 'center',
+  },
+  scrollContentWithKeyboard: {
+    justifyContent: 'flex-start',
+    paddingTop: 16,
+    paddingBottom: 60,
   },
   backLink: {
     flexDirection: 'row',

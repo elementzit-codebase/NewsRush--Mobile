@@ -161,8 +161,7 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.topBar}>
           <Text style={styles.topBarTitle}>Account Settings</Text>
@@ -175,7 +174,8 @@ export default function ProfileScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
           {/* Identity Hero Card */}
           <View style={styles.identityCard}>
